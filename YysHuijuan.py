@@ -165,20 +165,24 @@ def query_date(cid, ss, date):
 
 def parse_result(result):
     if not result:
-        return {}, 0
+        return {}, 0, 0
     msg = re.sub(r"<[^>]+>", "", result.get("message") or "")
     s = {}
+    score = 0
     m = re.search(r"绘卷碎片·小[：:]\s*(\d+)/(\d+)", msg)
     if m:
         s["小"] = f"{m.group(1)}/{m.group(2)}"
+        score += int(m.group(1)) * 10
     m = re.search(r"绘卷碎片·中[：:]\s*(\d+)", msg)
     if m:
         s["中"] = m.group(1)
+        score += int(m.group(1)) * 20
     m = re.search(r"绘卷碎片·大[：:]\s*(\d+)", msg)
     if m:
         s["大"] = m.group(1)
+        score += int(m.group(1)) * 100
     rows = ((result.get("tableData") or {}).get("rows") or [])
-    return s, len(rows)
+    return s, len(rows), score
 
 
 def build_report(data):
@@ -194,6 +198,7 @@ def build_report(data):
 
     # 查询结果
     results = data.get("查询结果", [])
+    total_score = 0
     if results:
         lines.append("📊 查询结果")
         for r in results:
@@ -202,6 +207,10 @@ def build_report(data):
             for t, c in fragments.items():
                 lines.append(f"    绘卷碎片·{t}: {c}")
             lines.append(f"    记录数: {r.get('记录数', 0)}")
+            lines.append(f"    绘卷分: {r.get('绘卷分', 0)}")
+            total_score += r.get('绘卷分', 0)
+        lines.append("")
+        lines.append(f"🏆 总计绘卷分: {total_score}")
 
     lines.append("")
     lines.append("─" * 18)
@@ -298,11 +307,12 @@ def main():
         query_results = []
         for date in target_dates:
             result = query_date(cid, ss, date)
-            summary, count = parse_result(result)
+            summary, count, score = parse_result(result)
             query_results.append({
                 "日期": date,
                 "碎片": summary,
-                "记录数": count
+                "记录数": count,
+                "绘卷分": score
             })
 
         # 构建报告数据
