@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-cron: 0 0 * * *
+cron: 20 0 * * *
 new Env("阴阳师绘卷查询")
 阴阳师绘卷查询 - 自动根据活动时间查询
 """
