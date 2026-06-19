@@ -113,7 +113,7 @@ def main() -> int:
     if not NS_COOKIE:
         content = _format_result(False, "invalid", "未配置 NS_COOKIE，无法签到。", 0, 0)
         print("\n" + content)
-        notify_send("NodeSeek 签到结果", content)
+        notify_send("🔗 NodeSeek 签到结果", content)
         return 1
 
     delay_seconds = _sleep_jitter_before_checkin()
@@ -122,7 +122,7 @@ def main() -> int:
     elapsed_ms = int((datetime.now() - start).total_seconds() * 1000)
 
     content = _format_result(ok, status, message, elapsed_ms, delay_seconds)
-    title = f"NodeSeek 签到结果 @ {beijing_time_str()}"
+    title = f"🔗 NodeSeek 签到结果 @ {beijing_time_str()}"
     print("\n" + content)
     notify_send(title, content)
     return 0 if ok else 1
