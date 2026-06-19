@@ -315,10 +315,10 @@ def build_shop_image(items: list) -> str:
             bg_img = PILImage.open(bg_path)
             goods_img = PILImage.open(goods_path)
 
-            # 调整商品图尺寸
-            height = 180
-            width = int((goods_img.width * height) / goods_img.height)
-            goods_resized = goods_img.resize((width, height))
+            # 调整商品图尺寸（宽度 = 背景图宽度 - 20px）
+            target_width = bg_img.width - 20
+            height = int((goods_img.height * target_width) / goods_img.width)
+            goods_resized = goods_img.resize((target_width, height))
 
             # 计算居中粘贴位置
             x = (bg_img.width - goods_resized.width) // 2
