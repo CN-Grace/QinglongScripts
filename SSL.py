@@ -295,7 +295,7 @@ def main():
 
     cert_results = check_all_domains(domains_to_check)
     report = format_certificate_report(cert_results)
-    notify_send("SSL 证书检查报告", report)
+    notify_send("🔔 SSL 证书检查报告", report)
 
     cats = categorize_certificates(cert_results)
     print(f"\n{'=' * 60}")

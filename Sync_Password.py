@@ -195,7 +195,7 @@ def main():
     start_time = beijing_now()
     backup_success, log_messages, backup_filepath, has_update = perform_backup()
 
-    title = f"Bitwarden 备份报告"
+    title = f"🔐 Bitwarden 备份报告"
     content = build_report_content(log_messages)
 
     if has_update and backup_filepath and os.path.exists(backup_filepath):

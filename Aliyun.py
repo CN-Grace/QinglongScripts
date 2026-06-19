@@ -107,5 +107,5 @@ def main() -> Dict[str, Any]:
 if __name__ == "__main__":
     result = main()
     report = build_report(result)
-    notify_send("阿里云盘 签到报告", report)
+    notify_send("📦 阿里云盘 签到报告", report)
     log_info(f"签到结果: {result}")

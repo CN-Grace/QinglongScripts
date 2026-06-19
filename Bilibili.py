@@ -285,4 +285,4 @@ if __name__ == "__main__":
     report = main()
     if report and isinstance(report, dict):
         tg_text = build_report(report)
-        notify_send("Bilibili 每日任务报告", tg_text)
+        notify_send("🎯 Bilibili 每日任务报告", tg_text)

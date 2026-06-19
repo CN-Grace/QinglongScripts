@@ -303,4 +303,4 @@ if __name__ == "__main__":
     result = main()
     if result:
         report = build_report(result["stats"], result["user_name"], result["details"])
-        notify_send("百度贴吧 签到报告", report)
+        notify_send("📢 百度贴吧 签到报告", report)

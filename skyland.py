@@ -421,7 +421,7 @@ def main():
 
     push_content = format_push_message(all_accounts_logs)
     print("\n" + push_content + "\n")
-    notify_send("森空岛 签到报告", push_content)
+    notify_send("📋 森空岛 签到报告", push_content)
 
 
 if __name__ == "__main__":

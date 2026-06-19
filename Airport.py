@@ -232,7 +232,7 @@ def main():
         log_info(f"--- {service_name} 处理完成 ---")
 
     report = format_multi_checkin_report(results)
-    notify_send("机场签到报告", report)
+    notify_send("📋 机场签到报告", report)
 
     print(f"\n{'=' * 60}\n{report}\n{'=' * 60}")
 

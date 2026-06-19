@@ -260,7 +260,7 @@ def main():
 
             # 发送通知
             tg_text = build_report(report_data)
-            notify_send("阴阳师绘卷活动时间", tg_text)
+            notify_send("🎮 阴阳师绘卷活动", tg_text)
             return
 
     log_error("未找到绘卷活动信息")
