@@ -133,13 +133,14 @@ def format_project_info(project: Dict, project_num: int, total_projects: int) ->
         lines.append(f"     数据: {' | '.join(stats)}")
     if github_url:
         lines.append(f"     链接: {github_url}")
+    lines.append("")
     return "\n".join(lines)
 
 
 def format_category_header(category: Dict, category_num: int, total_categories: int) -> str:
     category_name = category["category_name"]
     items = category["items"]
-    return f"\n🎯 {category_num}/{total_categories}. {category_name} ({len(items)} 个项目)\n\n"
+    return f"\n🎯 {category_num}/{total_categories}. {category_name} ({len(items)} 个项目)\n"
 
 
 def calculate_message_count(total_chars: int, max_length: int = MAX_MESSAGE_LENGTH) -> int:
