@@ -139,7 +139,7 @@ def format_project_info(project: Dict, project_num: int, total_projects: int) ->
 def format_category_header(category: Dict, category_num: int, total_categories: int) -> str:
     category_name = category["category_name"]
     items = category["items"]
-    return f"\n{'─' * 40}\n\n🎯 {category_num}/{total_categories}. {category_name} ({len(items)} 个项目)\n\n"
+    return f"\n🎯 {category_num}/{total_categories}. {category_name} ({len(items)} 个项目)\n\n"
 
 
 def calculate_message_count(total_chars: int, max_length: int = MAX_MESSAGE_LENGTH) -> int:
@@ -171,9 +171,14 @@ def build_project_parts(categories: List[Dict], total_items: int, total_categori
     cat_num = 1
     for cat in categories:
         parts.append(format_category_header(cat, cat_num, total_categories))
-        for i, item in enumerate(cat["items"]):
+        items = cat["items"]
+        for i, item in enumerate(items):
             proj_num = sum(len(c["items"]) for c in categories[:cat_num - 1]) + i + 1
-            parts.append(format_project_info(item, proj_num, total_items))
+            text = format_project_info(item, proj_num, total_items)
+            # 如果是分类最后一个项目，添加分割线
+            if i == len(items) - 1:
+                text += f"{'─' * 40}\n\n"
+            parts.append(text)
         cat_num += 1
     return parts
 
