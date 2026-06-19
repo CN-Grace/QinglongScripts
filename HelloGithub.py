@@ -20,7 +20,8 @@ from utils import log_info, log_success, log_warning, log_error, beijing_time_st
 from notifier import send as notify_send
 
 # ==================== 用户配置 ====================
-STATE_FILE = Path.home() / ".hellogithub_bot_state.json"
+SCRIPT_DIR = Path(__file__).parent
+STATE_FILE = SCRIPT_DIR / ".hellogithub_bot_state.json"
 PERIODICAL_API = "https://abroad.hellogithub.com/v1/periodical/"
 PERIODICAL_PAGE_URL = "https://hellogithub.com/periodical"
 MAX_MESSAGE_LENGTH = 3900
