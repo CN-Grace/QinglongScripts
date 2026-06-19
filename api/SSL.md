@@ -11,13 +11,23 @@
 | 变量名 | 必填 | 说明 |
 |--------|------|------|
 | `CF_API_TOKEN` | ✅ | Cloudflare API Token（需要 DNS:Read 权限） |
-| `CF_ZONE_ID` | ✅ | Cloudflare Zone ID（在域名概览页面获取） |
-| `CF_DOMAIN` | ✅ | 自选顶级域名，如 `example.com` |
+| `CF_ZONE_IDS` | ✅ | Cloudflare Zone ID，多个用逗号分隔 |
+| `CF_DOMAINS` | ✅ | 自选顶级域名，多个用逗号分隔，与 CF_ZONE_IDS 一一对应 |
 | `SSL_WARNING_DAYS` | ❌ | 证书到期警告天数，默认 30 天 |
+
+### 配置示例
+
+```
+CF_API_TOKEN=your_api_token_here
+CF_ZONE_IDS=zone_id_1,zone_id_2
+CF_DOMAINS=example.com,example.org
+```
 
 ## 工作流程
 
 ### 1. 从 Cloudflare 获取域名列表
+
+对每个顶级域名，调用 Cloudflare API 获取其下所有 A 记录：
 
 **API 请求:**
 ```
@@ -58,7 +68,7 @@ Content-Type: application/json
 
 ### 2. 检查 SSL 证书
 
-对获取到的每个域名，使用 Python ssl 模块连接 443 端口获取证书信息。
+对获取到的所有域名（自动去重），使用 Python ssl 模块连接 443 端口获取证书信息。
 
 ## 输出报告格式
 
@@ -76,7 +86,7 @@ Content-Type: application/json
 
 ✅ 证书状态正常:
    www.example.com — 剩余 365 天
-   api.example.com — 剩余 180 天
+   api.example.org — 剩余 180 天
 
 📈 统计信息:
    ✅ 正常: 2
@@ -95,7 +105,7 @@ Content-Type: application/json
 3. 点击 **Create Token**
 4. 选择 **Edit zone DNS** 模板（或自定义权限）
 5. 权限设置：`Zone - DNS - Read`
-6. 区域选择：指定你的域名
+6. 区域选择：选择你需要监控的域名（可多选）
 7. 创建后复制 Token（只显示一次）
 
 ## Zone ID 获取方法
@@ -104,3 +114,4 @@ Content-Type: application/json
 2. 选择你的域名
 3. 在 **Overview** 页面右下角找到 **Zone ID**
 4. 点击复制
+5. 对每个需要监控的顶级域名重复上述步骤

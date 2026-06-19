@@ -22,8 +22,10 @@ from notifier import send as notify_send
 # ==================== 用户配置 ====================
 # Cloudflare 配置
 CF_API_TOKEN = os.environ.get("CF_API_TOKEN", "")
-CF_ZONE_ID = os.environ.get("CF_ZONE_ID", "")
-CF_DOMAIN = os.environ.get("CF_DOMAIN", "")  # 自选顶级域名，如 example.com
+# 多个 Zone ID 用逗号分隔，与 CF_DOMAINS 一一对应
+CF_ZONE_IDS = [z.strip() for z in os.environ.get("CF_ZONE_IDS", "").split(",") if z.strip()]
+# 多个顶级域名用逗号分隔，与 CF_ZONE_IDS 一一对应
+CF_DOMAINS = [d.strip() for d in os.environ.get("CF_DOMAINS", "").split(",") if d.strip()]
 
 # SSL 检查配置
 WARNING_THRESHOLD = int(os.environ.get("SSL_WARNING_DAYS", "30"))
@@ -33,12 +35,8 @@ CONNECTION_TIMEOUT = 10
 CF_API_BASE = "https://api.cloudflare.com/client/v4"
 
 
-def get_cloudflare_a_records() -> List[str]:
-    """通过 Cloudflare API 获取指定域名下的所有 A 记录"""
-    if not CF_API_TOKEN or not CF_ZONE_ID or not CF_DOMAIN:
-        log_error("Cloudflare 配置不完整，请检查 CF_API_TOKEN、CF_ZONE_ID、CF_DOMAIN 环境变量")
-        return []
-
+def get_cloudflare_a_records(zone_id: str, domain: str) -> List[str]:
+    """通过 Cloudflare API 获取指定 Zone 下的所有 A 记录"""
     domains = []
     page = 1
     per_page = 100
@@ -50,7 +48,7 @@ def get_cloudflare_a_records() -> List[str]:
 
     try:
         while True:
-            url = f"{CF_API_BASE}/zones/{CF_ZONE_ID}/dns_records"
+            url = f"{CF_API_BASE}/zones/{zone_id}/dns_records"
             params = {
                 "type": "A",
                 "page": page,
@@ -63,7 +61,7 @@ def get_cloudflare_a_records() -> List[str]:
 
             if not data.get("success"):
                 errors = data.get("errors", [])
-                log_error(f"Cloudflare API 错误: {errors}")
+                log_error(f"Cloudflare API 错误 ({domain}): {errors}")
                 break
 
             records = data.get("result", [])
@@ -83,14 +81,36 @@ def get_cloudflare_a_records() -> List[str]:
                 break
             page += 1
 
-        log_info(f"从 Cloudflare 获取到 {len(domains)} 个 A 记录域名")
+        log_info(f"从 {domain} 获取到 {len(domains)} 个 A 记录域名")
 
     except requests.exceptions.RequestException as e:
-        log_error(f"Cloudflare API 请求失败: {e}")
+        log_error(f"Cloudflare API 请求失败 ({domain}): {e}")
     except Exception as e:
-        log_error(f"获取 Cloudflare A 记录时出错: {e}")
+        log_error(f"获取 Cloudflare A 记录时出错 ({domain}): {e}")
 
     return domains
+
+
+def get_all_domains() -> List[str]:
+    """从所有配置的 Cloudflare Zone 获取域名列表"""
+    if not CF_API_TOKEN or not CF_ZONE_IDS or not CF_DOMAINS:
+        log_error("Cloudflare 配置不完整，请检查 CF_API_TOKEN、CF_ZONE_IDS、CF_DOMAINS 环境变量")
+        return []
+
+    if len(CF_ZONE_IDS) != len(CF_DOMAINS):
+        log_error("CF_ZONE_IDS 和 CF_DOMAINS 数量不匹配，请检查配置")
+        return []
+
+    all_domains = []
+    for zone_id, domain in zip(CF_ZONE_IDS, CF_DOMAINS):
+        log_info(f"正在获取 {domain} 的 A 记录...")
+        domains = get_cloudflare_a_records(zone_id, domain)
+        for d in domains:
+            if d not in all_domains:
+                all_domains.append(d)
+
+    log_info(f"共获取到 {len(all_domains)} 个不重复的 A 记录域名")
+    return all_domains
 
 
 def get_certificate_info(domain: str) -> Dict:
@@ -203,7 +223,7 @@ def main():
     log_info("=" * 50)
 
     # 从 Cloudflare 获取域名列表
-    domains_to_check = get_cloudflare_a_records()
+    domains_to_check = get_all_domains()
 
     if not domains_to_check:
         log_warning("未获取到任何域名，脚本结束")
