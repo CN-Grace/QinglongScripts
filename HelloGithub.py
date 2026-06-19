@@ -159,10 +159,10 @@ def calculate_message_count(total_chars: int, max_length: int = MAX_MESSAGE_LENG
 
 def build_header(title: str, desc: str, volume_num: int, total_items: int, total_categories: int, pub_date: str) -> str:
     """构建月刊信息"""
-    header = f"🚀 {title}\n\n"
+    header = f"🚀 {title}\n"
     if desc:
-        header += f"📝 {desc}\n\n"
-    header += f"📅 发布时间: {pub_date}\n🔢 期号: 第 {volume_num} 期\n📚 项目总数: {total_items} 个\n🏷️ 分类数量: {total_categories} 个\n\n{'─' * 40}\n"
+        header += f"📝 {desc}\n"
+    header += f"📅 发布时间: {pub_date}\n🔢 期号: 第 {volume_num} 期\n📚 项目总数: {total_items} 个\n🏷️ 分类数量: {total_categories} 个\n{'─' * 40}"
     return header
 
 
