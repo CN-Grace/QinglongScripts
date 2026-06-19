@@ -217,15 +217,26 @@ def format_certificate_report(certificates: List[Dict]) -> str:
     cats = categorize_certificates(certificates)
     lines = ["🔔 SSL 证书检查报告", ""]
 
-    # 按主域名分组
+    # 按主域名分组（使用环境变量中配置的域名）
     domain_groups = {}
     for cert in certificates:
-        # 从 A 解析域名中提取主域名（取最后两段）
-        parts = cert["domain"].split(":")[0].split(".")
-        if len(parts) >= 2:
-            main_domain = ".".join(parts[-2:])
-        else:
-            main_domain = parts[0]
+        # 从 A 解析域名中提取主域名
+        full_domain = cert["domain"].split(":")[0]
+        main_domain = None
+
+        # 匹配环境变量中配置的域名
+        for cf_domain in CF_DOMAINS:
+            if full_domain.endswith("." + cf_domain) or full_domain == cf_domain:
+                main_domain = cf_domain
+                break
+
+        # 如果没有匹配到，使用域名的最后两段
+        if not main_domain:
+            parts = full_domain.split(".")
+            if len(parts) >= 2:
+                main_domain = ".".join(parts[-2:])
+            else:
+                main_domain = parts[0]
 
         if main_domain not in domain_groups:
             domain_groups[main_domain] = []
@@ -235,9 +246,17 @@ def format_certificate_report(certificates: List[Dict]) -> str:
     for main_domain, certs in domain_groups.items():
         lines.append(f"主域名：{main_domain}")
         for cert in certs:
-            # 提取 A 解析域名和端口
-            domain_part = cert["domain"].split(":")[0]
+            # 提取 A 解析的前缀部分（不包含主域名）
+            full_domain = cert["domain"].split(":")[0]
             port = cert["domain"].split(":")[1] if ":" in cert["domain"] else "443"
+
+            # 提取前缀：去掉主域名部分
+            if full_domain.endswith("." + main_domain):
+                prefix = full_domain[:-(len(main_domain) + 1)]
+            elif full_domain == main_domain:
+                prefix = "@"
+            else:
+                prefix = full_domain
 
             # 确定状态 emoji 和剩余天数
             if cert["error"]:
@@ -253,7 +272,7 @@ def format_certificate_report(certificates: List[Dict]) -> str:
                 emoji = "✅"
                 status = f"剩余 {cert['days_left']} 天"
 
-            lines.append(f"{emoji} {domain_part} - {port} - {status}")
+            lines.append(f"{emoji} {prefix} - {port} - {status}")
         lines.append("")
 
     lines.append("─" * 18)
