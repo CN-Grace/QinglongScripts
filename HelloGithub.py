@@ -142,6 +142,48 @@ def format_category_header(category: Dict, category_num: int, total_categories: 
     return f"\n{'─' * 40}\n\n🎯 {category_num}/{total_categories}. {category_name} ({len(items)} 个项目)\n\n"
 
 
+def calculate_message_count(total_chars: int, max_length: int = MAX_MESSAGE_LENGTH) -> int:
+    """计算消息条数：向上取整，小数位>0.7则+1"""
+    ratio = total_chars / max_length
+    integer_part = int(ratio)
+    decimal_part = ratio - integer_part
+
+    if decimal_part == 0:
+        return integer_part
+    elif decimal_part > 0.7:
+        return integer_part + 2  # 向上取整 + 1
+    else:
+        return integer_part + 1  # 向上取整
+
+
+def build_header(title: str, desc: str, volume_num: int, total_items: int, total_categories: int, pub_date: str) -> str:
+    """构建月刊信息"""
+    header = f"🚀 {title}\n\n"
+    if desc:
+        header += f"📝 {desc}\n\n"
+    header += f"📅 发布时间: {pub_date}\n🔢 期号: 第 {volume_num} 期\n📚 项目总数: {total_items} 个\n🏷️ 分类数量: {total_categories} 个\n\n{'─' * 40}\n"
+    return header
+
+
+def build_project_parts(categories: List[Dict], total_items: int, total_categories: int) -> List[str]:
+    """构建项目详情列表"""
+    parts = []
+    cat_num = 1
+    for cat in categories:
+        parts.append(format_category_header(cat, cat_num, total_categories))
+        for i, item in enumerate(cat["items"]):
+            proj_num = sum(len(c["items"]) for c in categories[:cat_num - 1]) + i + 1
+            parts.append(format_project_info(item, proj_num, total_items))
+        cat_num += 1
+    return parts
+
+
+def build_footer(title: str, volume_num: int, total_items: int, total_categories: int) -> str:
+    """构建月刊总结"""
+    read_more = f"https://hellogithub.com/zh/periodical/volume/{volume_num}/"
+    return f"\n{'─' * 40}\n\n🎉 {title} 完整内容已发送完毕！\n\n📊 本期共 {total_items} 个项目，{total_categories} 个分类\n🔗 在线阅读: {read_more}\n🌟 GitHub: https://github.com/521xueweihan/HelloGitHub"
+
+
 def create_report_pages(content: Dict) -> List[str]:
     if not content:
         return []
@@ -156,39 +198,44 @@ def create_report_pages(content: Dict) -> List[str]:
     latest_num, lastmod = get_latest_volume_info()
     pub_date = lastmod[:10] if lastmod else beijing_time_str("%Y-%m-%d")
 
-    # 标题页
-    header = f"🚀 {title}\n\n"
-    if desc:
-        header += f"📝 {desc}\n\n"
-    header += f"📅 发布时间: {pub_date}\n🔢 期号: 第 {volume_num} 期\n📚 项目总数: {total_items} 个\n🏷️ 分类数量: {total_categories} 个\n\n{'─' * 40}\n"
-    pages = [header]
+    # 1. 构建各部分内容
+    header = build_header(title, desc, volume_num, total_items, total_categories, pub_date)
+    project_parts = build_project_parts(categories, total_items, total_categories)
+    footer = build_footer(title, volume_num, total_items, total_categories)
 
-    all_parts = []
-    cat_num = 1
-    for cat in categories:
-        all_parts.append(format_category_header(cat, cat_num, total_categories))
-        for i, item in enumerate(cat["items"]):
-            proj_num = sum(len(c["items"]) for c in categories[:cat_num - 1]) + i + 1
-            all_parts.append(format_project_info(item, proj_num, total_items))
-        cat_num += 1
+    # 2. 计算总字符数
+    total_chars = len(header) + sum(len(p) for p in project_parts) + len(footer)
 
-    current = ""
-    for part in all_parts:
-        if len(current) + len(part) <= MAX_MESSAGE_LENGTH:
-            current += part
-        else:
-            if current:
-                pages.append(f"📋 第 {volume_num} 期 - 项目详情\n\n{current}")
-            current = part
-            if len(part) > MAX_MESSAGE_LENGTH:
-                pages.append(part)
-                current = ""
-    if current:
-        pages.append(f"📋 第 {volume_num} 期 - 项目详情\n\n{current}")
+    # 3. 计算消息条数
+    message_count = calculate_message_count(total_chars)
+    log_info(f"总字符数: {total_chars}, 计算消息条数: {message_count}")
 
-    read_more = f"https://hellogithub.com/zh/periodical/volume/{volume_num}/"
-    footer = f"\n{'─' * 40}\n\n🎉 {title} 完整内容已发送完毕！\n\n📊 本期共 {total_items} 个项目，{total_categories} 个分类\n🔗 在线阅读: {read_more}\n🌟 GitHub: https://github.com/521xueweihan/HelloGitHub"
-    pages.append(footer)
+    # 4. 计算每条消息的目标字符数
+    target_chars_per_message = total_chars / message_count
+
+    # 5. 动态分配项目到每条消息
+    pages = []
+    current_page = header
+    current_chars = len(header)
+
+    for i, part in enumerate(project_parts):
+        # 如果当前页已满，且还有剩余页数，开始新页
+        if current_chars + len(part) > target_chars_per_message and len(pages) < message_count - 1:
+            pages.append(current_page)
+            current_page = f"📋 第 {volume_num} 期 - 项目详情\n\n"
+            current_chars = len(current_page)
+
+        current_page += part
+        current_chars += len(part)
+
+    # 添加 footer
+    current_page += footer
+    pages.append(current_page)
+
+    log_info(f"实际生成 {len(pages)} 条消息")
+    for i, page in enumerate(pages, 1):
+        log_info(f"  第 {i} 条: {len(page)} 字符")
+
     return pages
 
 
