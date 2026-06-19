@@ -673,10 +673,11 @@ def _send_wxpusher(title: str, content: str) -> bool:
 
 # ==================== 图片推送 ====================
 
-def send_photos(title: str, text_content: str, photos: list) -> None:
+def send_photos(title: str, text_content: str, photos: list, caption_with_title: bool = True) -> None:
     """
     发送图片通知：文本推送到所有通道，图片仅 Telegram。
     photos: [{"image": "url或本地路径", "caption": "图片说明"}, ...]
+    caption_with_title: 是否在图片说明中包含标题
     """
     # 文本推送所有通道
     send(title, text_content)
@@ -685,7 +686,10 @@ def send_photos(title: str, text_content: str, photos: list) -> None:
     for i, photo in enumerate(photos):
         image = photo.get("image", "")
         caption = photo.get("caption", f"Photo {i+1}")
-        full_caption = f"{title}\n{caption}"
+        if caption_with_title:
+            full_caption = f"{title}\n{caption}"
+        else:
+            full_caption = caption
         try:
             _send_telegram_photo(full_caption, image)
         except Exception:

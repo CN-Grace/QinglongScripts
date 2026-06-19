@@ -302,7 +302,7 @@ def main():
         })
 
     # 通知: 文本推所有通道, 图片仅 Telegram
-    notify_send_photos("🔫 掌瓦每日商店", report, photos)
+    notify_send_photos("🔫 掌瓦每日商店", report, photos, caption_with_title=False)
     log_info(f"推送完成: 文字 + {len(photos)} 张图片")
 
 
