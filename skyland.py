@@ -360,7 +360,7 @@ def parse_log_line(log: str):
 
 
 def format_push_message(accounts_logs):
-    lines = ["📋 森空岛签到服务报告", f"执行时间: {beijing_time_str()}", ""]
+    lines = []
     for acc_idx, logs in enumerate(accounts_logs, 1):
         game_dict = {}
         info_lines = []
@@ -395,7 +395,9 @@ def format_push_message(accounts_logs):
                         lines.append(f"    ℹ️ 原因: {extra}")
             lines.append("")
 
-    return "\n".join(lines).rstrip()
+    lines.append("─" * 18)
+    lines.append(f"🕒 执行时间: {beijing_time_str()}")
+    return "\n".join(lines)
 
 
 def main():

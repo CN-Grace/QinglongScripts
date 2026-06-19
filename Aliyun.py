@@ -77,7 +77,7 @@ def sign(access_token: str) -> Dict[str, Any]:
 
 def build_report(result: Dict[str, Any]) -> str:
     """构建签到报告"""
-    lines = ["📦 阿里云盘 签到报告", ""]
+    lines = []
     if result.get("success"):
         lines.append(f"✅ 签到状态: 成功")
         lines.append(f"📅 累计签到: {result['sign_days']} 天")

@@ -223,7 +223,7 @@ def build_report(items: list, nickname: str, end_ts: int) -> str:
     """构建文字报告"""
     end_time = datetime.fromtimestamp(end_ts, tz=TZ_BEIJING).strftime("%Y-%m-%d %H:%M") if end_ts else "未知"
 
-    lines = ["🔫 掌上无畏契约 每日商店", "", f"👤 账号: {nickname}", f"⏰ 刷新时间: {end_time}", "", "─" * 18, ""]
+    lines = [f"👤 账号: {nickname}", f"⏰ 刷新时间: {end_time}", "", "─" * 18, ""]
 
     for i, item in enumerate(items):
         name = item.get("goods_name", "未知")

@@ -247,7 +247,7 @@ def sign_forums(session: requests.Session, bduss: str, forums: List[Dict], tbs: 
 
 def build_report(stats: Dict, user_name: str, details: List[Dict]) -> str:
     """构建签到报告"""
-    lines = ["📢 百度贴吧 签到报告", "", f"👤 账号: {user_name}", ""]
+    lines = [f"👤 账号: {user_name}", ""]
 
     if details:
         lines.append("📋 详细签到情况")

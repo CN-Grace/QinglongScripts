@@ -125,7 +125,6 @@ def sync_to_webdav(local_filepath: str) -> Tuple[bool, str]:
 
 def build_report_content(log_messages: list) -> str:
     lines = [
-        "🔐 Bitwarden 备份报告", "",
         f"📅 备份时间: {beijing_time_str()}",
         f"👤 账户: {BITWARDEN_USERNAME}", "",
         "─" * 18, "",

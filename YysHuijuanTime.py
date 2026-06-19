@@ -180,19 +180,18 @@ def build_report(data):
     if end_time and not is_activity_active(end_time):
         # 活动已结束
         lines = [
-            "🎮 阴阳师绘卷活动",
-            "",
             "目前无活动",
         ]
     else:
         # 活动进行中
         lines = [
-            "🎮 阴阳师绘卷活动",
-            "",
             f"📋 活动名称: {data.get('活动名称', '未知')}",
             f"📅 开始时间: {data.get('开始时间', '未知')} (维护后)",
             f"📅 结束时间: {end_time}",
         ]
+    lines.append("")
+    lines.append("─" * 18)
+    lines.append(f"🕒 执行时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     return "\n".join(lines)
 
 

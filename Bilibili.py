@@ -251,7 +251,7 @@ def main():
 
 def build_report(data):
     """构建签到报告"""
-    lines = ["🎯 Bilibili 每日任务报告", "", f"👤 账号: {data.get('账号', '未知')}", ""]
+    lines = [f"👤 账号: {data.get('账号', '未知')}", ""]
 
     tasks = [
         ("📖 漫画签到", data.get("漫画签到", "")),

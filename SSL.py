@@ -215,7 +215,7 @@ def categorize_certificates(certificates: List[Dict]) -> Dict[str, List[Dict]]:
 def format_certificate_report(certificates: List[Dict]) -> str:
     """格式化证书检查报告（简化版：按主域名分组显示）"""
     cats = categorize_certificates(certificates)
-    lines = ["🔔 SSL 证书检查报告", ""]
+    lines = []
 
     # 按主域名分组（使用环境变量中配置的域名）
     domain_groups = {}

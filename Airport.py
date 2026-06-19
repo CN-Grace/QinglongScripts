@@ -161,7 +161,7 @@ def get_traffic_info(session, service_config: Dict[str, str]) -> Dict[str, Any]:
 
 def format_multi_checkin_report(results: List[Dict[str, Any]]) -> str:
     """格式化多服务签到报告"""
-    lines = ["📋 多服务签到报告", "", f"执行时间: {beijing_time_str()}", ""]
+    lines = []
 
     for idx, res in enumerate(results, 1):
         name = res["name"]
