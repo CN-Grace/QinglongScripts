@@ -56,7 +56,13 @@ def get_cloudflare_a_records(zone_id: str, domain: str) -> List[str]:
             }
 
             response = requests.get(url, headers=headers, params=params, timeout=30)
-            response.raise_for_status()
+
+            # 打印详细错误信息用于调试
+            if response.status_code != 200:
+                log_error(f"Cloudflare API HTTP 错误 ({domain}): {response.status_code}")
+                log_error(f"响应内容: {response.text[:500]}")
+                break
+
             data = response.json()
 
             if not data.get("success"):
