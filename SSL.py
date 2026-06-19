@@ -3,6 +3,7 @@
 cron: 0 0 * * *
 new Env("SSL证书检查")
 SSL 证书检查脚本
+- 通过 Cloudflare API 自动获取域名 A 记录列表
 - 批量检查多个域名的 SSL 证书状态
 - 获取证书到期时间、剩余天数、颁发者等信息
 - 分类显示正常、警告、过期和检查失败的证书
@@ -11,6 +12,7 @@ SSL 证书检查脚本
 import os
 import ssl
 import socket
+import requests
 from datetime import datetime, timezone
 from typing import List, Dict
 
@@ -18,9 +20,77 @@ from utils import log_info, log_success, log_warning, log_error, beijing_now, be
 from notifier import send as notify_send
 
 # ==================== 用户配置 ====================
-DOMAINS_TO_CHECK = [d.strip() for d in os.environ.get("SSL_DOMAINS", "").split(",") if d.strip()]
-WARNING_THRESHOLD = 30
+# Cloudflare 配置
+CF_API_TOKEN = os.environ.get("CF_API_TOKEN", "")
+CF_ZONE_ID = os.environ.get("CF_ZONE_ID", "")
+CF_DOMAIN = os.environ.get("CF_DOMAIN", "")  # 自选顶级域名，如 example.com
+
+# SSL 检查配置
+WARNING_THRESHOLD = int(os.environ.get("SSL_WARNING_DAYS", "30"))
 CONNECTION_TIMEOUT = 10
+
+# Cloudflare API 基础地址
+CF_API_BASE = "https://api.cloudflare.com/client/v4"
+
+
+def get_cloudflare_a_records() -> List[str]:
+    """通过 Cloudflare API 获取指定域名下的所有 A 记录"""
+    if not CF_API_TOKEN or not CF_ZONE_ID or not CF_DOMAIN:
+        log_error("Cloudflare 配置不完整，请检查 CF_API_TOKEN、CF_ZONE_ID、CF_DOMAIN 环境变量")
+        return []
+
+    domains = []
+    page = 1
+    per_page = 100
+
+    headers = {
+        "Authorization": f"Bearer {CF_API_TOKEN}",
+        "Content-Type": "application/json"
+    }
+
+    try:
+        while True:
+            url = f"{CF_API_BASE}/zones/{CF_ZONE_ID}/dns_records"
+            params = {
+                "type": "A",
+                "page": page,
+                "per_page": per_page
+            }
+
+            response = requests.get(url, headers=headers, params=params, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+
+            if not data.get("success"):
+                errors = data.get("errors", [])
+                log_error(f"Cloudflare API 错误: {errors}")
+                break
+
+            records = data.get("result", [])
+            if not records:
+                break
+
+            for record in records:
+                name = record.get("name", "")
+                if name and name not in domains:
+                    domains.append(name)
+                    log_info(f"发现 A 记录: {name} -> {record.get('content', '')}")
+
+            # 检查是否有下一页
+            result_info = data.get("result_info", {})
+            total_pages = result_info.get("total_pages", 1)
+            if page >= total_pages:
+                break
+            page += 1
+
+        log_info(f"从 Cloudflare 获取到 {len(domains)} 个 A 记录域名")
+
+    except requests.exceptions.RequestException as e:
+        log_error(f"Cloudflare API 请求失败: {e}")
+    except Exception as e:
+        log_error(f"获取 Cloudflare A 记录时出错: {e}")
+
+    return domains
 
 
 def get_certificate_info(domain: str) -> Dict:
@@ -132,7 +202,15 @@ def main():
     log_info("SSL 证书检查脚本开始执行")
     log_info("=" * 50)
 
-    cert_results = check_all_domains(DOMAINS_TO_CHECK)
+    # 从 Cloudflare 获取域名列表
+    domains_to_check = get_cloudflare_a_records()
+
+    if not domains_to_check:
+        log_warning("未获取到任何域名，脚本结束")
+        notify_send("SSL 证书检查报告", "⚠️ 未从 Cloudflare 获取到任何 A 记录域名，请检查配置")
+        return
+
+    cert_results = check_all_domains(domains_to_check)
     report = format_certificate_report(cert_results)
     notify_send("SSL 证书检查报告", report)
 

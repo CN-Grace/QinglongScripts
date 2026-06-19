@@ -3,43 +3,104 @@
 ## 脚本信息
 
 - **文件名**: `SSL.py`
-- **定时任务**: `0 8 * * *` (每天8:00执行)
-- **功能**: SSL 证书到期监控
+- **定时任务**: `0 0 * * *` (每天0:00执行)
+- **功能**: SSL 证书到期监控（自动从 Cloudflare 获取域名列表）
 
 ## 环境变量
 
 | 变量名 | 必填 | 说明 |
 |--------|------|------|
-| `SSL_DOMAINS` | ✅ | 域名列表，逗号分隔 |
-| `SSL_DAYS` | ❌ | 提醒天数，默认30天 |
+| `CF_API_TOKEN` | ✅ | Cloudflare API Token（需要 DNS:Read 权限） |
+| `CF_ZONE_ID` | ✅ | Cloudflare Zone ID（在域名概览页面获取） |
+| `CF_DOMAIN` | ✅ | 自选顶级域名，如 `example.com` |
+| `SSL_WARNING_DAYS` | ❌ | 证书到期警告天数，默认 30 天 |
 
-## API 接本功能
+## 工作流程
 
-### 获取 SSL 证书信息
+### 1. 从 Cloudflare 获取域名列表
 
-**请求:**
+**API 请求:**
 ```
-GET https://{domain}:443
+GET https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records?type=A
 ```
 
-**使用 Python ssl 模块获取证书信息**
+**请求头:**
+```
+Authorization: Bearer {CF_API_TOKEN}
+Content-Type: application/json
+```
 
-**响应:**
-```python
+**响应示例:**
+```json
 {
-  "notAfter": "2026-06-29 00:00:00",  # 证书到期时间
-  "subject": "域名信息"
+  "success": true,
+  "result": [
+    {
+      "name": "www.example.com",
+      "type": "A",
+      "content": "192.168.1.1"
+    },
+    {
+      "name": "api.example.com",
+      "type": "A",
+      "content": "192.168.1.2"
+    }
+  ],
+  "result_info": {
+    "page": 1,
+    "per_page": 100,
+    "total_pages": 1,
+    "count": 2,
+    "total": 2
+  }
 }
 ```
+
+### 2. 检查 SSL 证书
+
+对获取到的每个域名，使用 Python ssl 模块连接 443 端口获取证书信息。
 
 ## 输出报告格式
 
 ```
-🔒 SSL 证书监控报告
+🔔 SSL 证书检查报告
 
-✅ example.com - 有效期至 2026-06-29 (剩余 30 天)
-⚠️ test.com - 有效期至 2026-06-01 (剩余 2 天，即将到期)
+⏰ 检查时间: 2026-06-19 00:00:00
+📊 总计: 5 个域名
+
+❌ 已过期的证书:
+   expired.example.com — 已过期 3 天 (到期: 2026-06-16)
+
+⚠️ 即将过期的证书 (30天内):
+   soon.example.com — 剩余 15 天 (到期: 2026-07-04 | 颁发: Let's Encrypt)
+
+✅ 证书状态正常:
+   www.example.com — 剩余 365 天
+   api.example.com — 剩余 180 天
+
+📈 统计信息:
+   ✅ 正常: 2
+   ⚠️ 警告: 1
+   ❌ 过期: 1
+   🔧 失败: 1
 
 ──────────────────
-🕒 执行时间: 2026-05-29 08:00:00
+🕒 执行时间: 2026-06-19 00:00:00
 ```
+
+## Cloudflare API Token 创建指南
+
+1. 登录 [Cloudflare Dashboard](https://dash.cloudflare.com)
+2. 点击右上角头像 → **My Profile** → **API Tokens**
+3. 点击 **Create Token**
+4. 选择 **Edit zone DNS** 模板（或自定义权限）
+5. 权限设置：`Zone - DNS - Read`
+6. 区域选择：指定你的域名
+7. 创建后复制 Token（只显示一次）
+
+## Zone ID 获取方法
+
+1. 登录 [Cloudflare Dashboard](https://dash.cloudflare.com)
+2. 选择你的域名
+3. 在 **Overview** 页面右下角找到 **Zone ID**
+4. 点击复制
