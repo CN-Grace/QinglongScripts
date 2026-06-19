@@ -145,6 +145,7 @@ QinglongScripts/
 │   ├── Tieba.md
 │   ├── ValorantStore.md
 │   └── YysHuijuanTime.md
+├── config/                 # 配置文件目录（自动创建，已 gitignore）
 ├── docs/                   # 项目文档
 │   ├── index.html
 │   └── src/                # 资源文件
@@ -156,6 +157,7 @@ QinglongScripts/
 ├── Aliyun.py               # 阿里云盘签到
 ├── Bilibili.py             # B站每日任务
 ├── HelloGithub.py          # HelloGithub 月刊
+├── LICENSE                 # MIT 许可证
 ├── Nodeseek.py             # Nodeseek 签到
 ├── notifier.py             # 通知模块
 ├── README.md               # 项目说明
