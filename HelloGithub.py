@@ -21,7 +21,8 @@ from notifier import send as notify_send
 
 # ==================== 用户配置 ====================
 SCRIPT_DIR = Path(__file__).parent
-STATE_FILE = SCRIPT_DIR / ".hellogithub_bot_state.json"
+CONFIG_DIR = SCRIPT_DIR / "config"
+STATE_FILE = CONFIG_DIR / ".hellogithub_bot_state.json"
 PERIODICAL_API = "https://abroad.hellogithub.com/v1/periodical/"
 PERIODICAL_PAGE_URL = "https://hellogithub.com/periodical"
 MAX_MESSAGE_LENGTH = 3900
@@ -40,6 +41,7 @@ def load_last_sent_volume() -> int:
 
 def save_last_sent_volume(volume_num: int) -> None:
     try:
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         state = {"last_sent_volume": volume_num, "updated_at": datetime.now().isoformat(), "last_run": beijing_time_str()}
         with open(STATE_FILE, "w", encoding="utf-8") as f:
             json.dump(state, f, ensure_ascii=False, indent=2)

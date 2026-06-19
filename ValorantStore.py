@@ -34,8 +34,9 @@ QUALITY_MAP = {
 
 API_BASE = "https://app.mval.qq.com"
 COMMON_PARAMS = "source_game_zone=agame&game_zone=agame"
-CT_FILE = Path(__file__).parent / ".valorant_ct"
-AT_FILE = Path(__file__).parent / ".valorant_at"  # 持久化 access_token
+CONFIG_DIR = Path(__file__).parent / "config"
+CT_FILE = CONFIG_DIR / ".valorant_ct"
+AT_FILE = CONFIG_DIR / ".valorant_at"  # 持久化 access_token
 
 
 def parse_cookie(cookie: str) -> dict:
@@ -63,6 +64,7 @@ def load_ct(cookie_dict: dict) -> str:
 
 def save_ct(ct: str):
     """保存 ct 到本地文件，供下次运行使用"""
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     CT_FILE.write_text(ct)
 
 
@@ -80,6 +82,7 @@ def load_at(cookie_dict: dict) -> str:
 
 def save_at(at: str):
     """保存 access_token 到本地文件，供下次运行使用"""
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     AT_FILE.write_text(at)
 
 
@@ -258,24 +261,22 @@ def download_image(url: str, timeout: int = 10) -> str:
 
 
 FONT_URL = "https://github.com/anthonyfok/fonts-wqy-microhei/raw/master/wqy-microhei.ttc"
+FONT_FILE = CONFIG_DIR / "font.ttf"
 
 
 def ensure_font() -> str:
     """确保字体文件存在，不存在则下载"""
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    font_path = os.path.join(script_dir, "font.ttf")
-
-    if os.path.exists(font_path):
-        return font_path
+    if FONT_FILE.exists():
+        return str(FONT_FILE)
 
     log_info("字体文件不存在，开始下载...")
     try:
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         resp = requests.get(FONT_URL, timeout=30)
         resp.raise_for_status()
-        with open(font_path, "wb") as f:
-            f.write(resp.content)
-        log_success(f"字体下载完成: {font_path}")
-        return font_path
+        FONT_FILE.write_bytes(resp.content)
+        log_success(f"字体下载完成: {FONT_FILE}")
+        return str(FONT_FILE)
     except Exception as e:
         log_error(f"字体下载失败: {e}")
         return None

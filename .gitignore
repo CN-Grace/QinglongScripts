@@ -4,6 +4,6 @@ Password
 __pycache__
 .env
 *.har
-.valorant_ct
+config/
 node_modules/
 debug/

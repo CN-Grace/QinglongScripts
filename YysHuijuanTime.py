@@ -16,7 +16,8 @@ from notifier import send as notify_send
 
 # 活动时间JSON路径
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-ACTIVITY_JSON = os.path.join(SCRIPT_DIR, "yys_huijuan_time.json")
+CONFIG_DIR = os.path.join(SCRIPT_DIR, "config")
+ACTIVITY_JSON = os.path.join(CONFIG_DIR, "yys_huijuan_time.json")
 
 # 公告列表页
 UPDATE_LIST_URL = "https://yys.163.com/news/update/"
@@ -152,6 +153,7 @@ def load_existing_data():
 def save_data(data):
     """保存数据到JSON文件"""
     try:
+        os.makedirs(CONFIG_DIR, exist_ok=True)
         with open(ACTIVITY_JSON, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
         log_success(f"数据已保存到: {ACTIVITY_JSON}")
