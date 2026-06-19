@@ -99,10 +99,12 @@ def _format_result(ok: bool, status: str, message: str, elapsed_ms: int, delay_s
     delay_str = f"{delay_seconds // 60}m {delay_seconds % 60}s" if delay_seconds else "0s"
     lines = [
         f"{icon} 状态: {status}",
-        f"🕒 时间: {beijing_time_str()} (UTC+8)",
         f"⏱️ 耗时: {elapsed_ms} ms",
         f"🕯️ 延迟: {delay_str} (签到前随机延迟)",
         f"📝 说明: {message}",
+        "",
+        "─" * 18,
+        f"🕒 执行时间: {beijing_time_str()}",
     ]
     return "\n".join(lines)
 
@@ -122,9 +124,8 @@ def main() -> int:
     elapsed_ms = int((datetime.now() - start).total_seconds() * 1000)
 
     content = _format_result(ok, status, message, elapsed_ms, delay_seconds)
-    title = f"🔗 NodeSeek 签到结果 @ {beijing_time_str()}"
     print("\n" + content)
-    notify_send(title, content)
+    notify_send("🔗 NodeSeek 签到结果", content)
     return 0 if ok else 1
 
 
