@@ -261,6 +261,19 @@ def build_shop_image(items: list) -> str:
     """构建商店图片，返回图片文件路径"""
     processed_images = []
 
+    # 查找中文字体
+    font_path = None
+    possible_fonts = [
+        "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",  # 文泉驿正黑
+        "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",  # 文泉驿微米黑
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",  # Noto Sans CJK
+        "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",  # Droid Sans
+    ]
+    for fp in possible_fonts:
+        if os.path.exists(fp):
+            font_path = fp
+            break
+
     for i, item in enumerate(items):
         name = item.get("goods_name", "未知")
         price = item.get("rmb_price", "0")
@@ -309,7 +322,7 @@ def build_shop_image(items: list) -> str:
 
             # 加载字体
             try:
-                font = ImageFont.truetype("arial.ttf", 36)
+                font = ImageFont.truetype(font_path, 36) if font_path else ImageFont.load_default()
             except IOError:
                 font = ImageFont.load_default()
 
@@ -420,9 +433,12 @@ def main():
     shop_image_path = build_shop_image(items)
 
     if shop_image_path:
+        # 构建图片描述
+        end_time = datetime.fromtimestamp(end_ts, tz=TZ_BEIJING).strftime("%Y-%m-%d %H:%M") if end_ts else "未知"
+        caption = f"👤 账号: {nickname}\n⏰ 刷新时间: {end_time}\n\n{'─' * 18}\n🕒 执行时间: {beijing_time_str()}"
+
         # 发送图片
-        from notifier import send_file as notify_send_file
-        notify_send_file("🔫 掌瓦每日商店", f"👤 {nickname}\n⏰ 刷新时间: {datetime.fromtimestamp(end_ts, tz=TZ_BEIJING).strftime('%Y-%m-%d %H:%M')}", shop_image_path)
+        notify_send_photos("🔫 掌瓦每日商店", caption, [{"image": shop_image_path, "caption": ""}])
         # 清理临时文件
         if os.path.exists(shop_image_path):
             os.remove(shop_image_path)
