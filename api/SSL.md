@@ -16,6 +16,7 @@
 | `CF_ZONE_IDS` | ✅ | Cloudflare Zone ID，多个用逗号分隔 |
 | `CF_DOMAINS` | ✅ | 自选顶级域名，多个用逗号分隔，与 CF_ZONE_IDS 一一对应 |
 | `SSL_WARNING_DAYS` | ❌ | 证书到期警告天数，默认 30 天 |
+| `SSL_DEFAULT_PORT` | ❌ | 默认检查端口，默认 443 |
 
 ### 认证方式
 
@@ -65,7 +66,12 @@ Content-Type: application/json
 
 ### 2. 检查 SSL 证书
 
-对获取到的所有域名（自动去重），使用 Python ssl 模块连接 443 端口获取证书信息。
+对获取到的所有域名（自动去重），自动尝试连接以下常用 HTTPS 端口：
+- 443（标准 HTTPS）
+- 8443（常用备用端口）
+- 4443、4433、9443（其他常用端口）
+
+如果域名已指定端口（如 `domain:8443`），则只检查该端口。找到第一个有效的 SSL 证书即返回结果。
 
 ## Global API Key 获取方法
 

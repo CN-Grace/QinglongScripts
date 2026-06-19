@@ -34,6 +34,8 @@ CF_DOMAINS = [d.strip() for d in os.environ.get("CF_DOMAINS", "").split(",") if 
 # SSL 检查配置
 WARNING_THRESHOLD = int(os.environ.get("SSL_WARNING_DAYS", "30"))
 CONNECTION_TIMEOUT = 10
+# 常用 HTTPS 端口列表
+HTTPS_PORTS = [443, 8443, 4443, 4433, 9443]
 
 # Cloudflare API 基础地址
 CF_API_BASE = "https://api.cloudflare.com/client/v4"
@@ -137,28 +139,40 @@ def get_all_domains() -> List[str]:
 
 
 def get_certificate_info(domain: str) -> Dict:
-    """获取单个域名的 SSL 证书信息"""
-    result = {"domain": domain, "expiry_date": datetime.min, "days_left": -1, "issuer": "", "is_valid": False, "error": None}
-    try:
-        hostname = domain if ":" in domain else f"{domain}:443"
-        host, port = hostname.split(":")
-        port = int(port)
-        context = ssl.create_default_context()
-        with socket.create_connection((host, port), timeout=CONNECTION_TIMEOUT) as sock:
-            with context.wrap_socket(sock, server_hostname=host) as ssock:
-                cert = ssock.getpeercert()
+    """获取单个域名的 SSL 证书信息（自动尝试多个常用端口）"""
+    # 如果域名已指定端口，只检查该端口
+    if ":" in domain:
+        host, port = domain.split(":")
+        ports_to_try = [int(port)]
+    else:
+        host = domain
+        ports_to_try = HTTPS_PORTS
 
-        expiry_str = cert["notAfter"]
-        expiry_date = datetime.strptime(expiry_str, "%b %d %H:%M:%S %Y %Z").replace(tzinfo=timezone.utc)
-        now = datetime.now(timezone.utc)
-        days_left = (expiry_date - now).days
-        issuer_dict = dict(x[0] for x in cert["issuer"])
-        issuer = issuer_dict.get("organizationName", "Unknown")
-        result.update({"expiry_date": expiry_date, "days_left": days_left, "issuer": issuer, "is_valid": days_left > 0})
-        log_info(f"{domain} 证书剩余 {days_left} 天")
-    except Exception as e:
-        result["error"] = str(e)
-        log_error(f"{domain} 检查失败: {e}")
+    last_error = None
+    for port in ports_to_try:
+        result = {"domain": f"{host}:{port}", "expiry_date": datetime.min, "days_left": -1, "issuer": "", "is_valid": False, "error": None}
+        try:
+            context = ssl.create_default_context()
+            with socket.create_connection((host, port), timeout=CONNECTION_TIMEOUT) as sock:
+                with context.wrap_socket(sock, server_hostname=host) as ssock:
+                    cert = ssock.getpeercert()
+
+            expiry_str = cert["notAfter"]
+            expiry_date = datetime.strptime(expiry_str, "%b %d %H:%M:%S %Y %Z").replace(tzinfo=timezone.utc)
+            now = datetime.now(timezone.utc)
+            days_left = (expiry_date - now).days
+            issuer_dict = dict(x[0] for x in cert["issuer"])
+            issuer = issuer_dict.get("organizationName", "Unknown")
+            result.update({"expiry_date": expiry_date, "days_left": days_left, "issuer": issuer, "is_valid": days_left > 0})
+            log_info(f"{host}:{port} 证书剩余 {days_left} 天")
+            return result  # 找到有效端口就返回
+        except Exception as e:
+            last_error = str(e)
+            continue  # 尝试下一个端口
+
+    # 所有端口都失败
+    result = {"domain": host, "expiry_date": datetime.min, "days_left": -1, "issuer": "", "is_valid": False, "error": f"所有端口检查失败: {last_error}"}
+    log_error(f"{host} 所有端口检查失败")
     return result
 
 
