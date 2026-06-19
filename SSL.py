@@ -213,42 +213,49 @@ def categorize_certificates(certificates: List[Dict]) -> Dict[str, List[Dict]]:
 
 
 def format_certificate_report(certificates: List[Dict]) -> str:
-    """格式化证书检查报告"""
+    """格式化证书检查报告（简化版：按主域名分组显示）"""
     cats = categorize_certificates(certificates)
-    lines = [f"🔔 SSL 证书检查报告", "", f"⏰ 检查时间: {beijing_time_str()}", f"📊 总计: {len(certificates)} 个域名", ""]
+    lines = ["🔔 SSL 证书检查报告", ""]
 
-    if cats["expired"]:
-        lines.append("❌ 已过期的证书:")
-        for cert in cats["expired"]:
-            expiry = cert["expiry_date"].strftime("%Y-%m-%d") if cert["expiry_date"] != datetime.min else "未知"
-            lines.append(f"   {cert['domain']} — 已过期 {abs(cert['days_left'])} 天 (到期: {expiry})")
+    # 按主域名分组
+    domain_groups = {}
+    for cert in certificates:
+        # 从 A 解析域名中提取主域名（取最后两段）
+        parts = cert["domain"].split(":")[0].split(".")
+        if len(parts) >= 2:
+            main_domain = ".".join(parts[-2:])
+        else:
+            main_domain = parts[0]
+
+        if main_domain not in domain_groups:
+            domain_groups[main_domain] = []
+        domain_groups[main_domain].append(cert)
+
+    # 按主域名显示
+    for main_domain, certs in domain_groups.items():
+        lines.append(f"主域名：{main_domain}")
+        for cert in certs:
+            # 提取 A 解析域名和端口
+            domain_part = cert["domain"].split(":")[0]
+            port = cert["domain"].split(":")[1] if ":" in cert["domain"] else "443"
+
+            # 确定状态 emoji 和剩余天数
+            if cert["error"]:
+                emoji = "🔧"
+                status = f"检查失败: {cert['error']}"
+            elif not cert["is_valid"]:
+                emoji = "❌"
+                status = f"已过期 {abs(cert['days_left'])} 天"
+            elif cert["days_left"] <= WARNING_THRESHOLD:
+                emoji = "⚠️"
+                status = f"剩余 {cert['days_left']} 天"
+            else:
+                emoji = "✅"
+                status = f"剩余 {cert['days_left']} 天"
+
+            lines.append(f"{emoji} {domain_part} - {port} - {status}")
         lines.append("")
 
-    if cats["warning"]:
-        lines.append("⚠️ 即将过期的证书 (30天内):")
-        for cert in cats["warning"]:
-            expiry = cert["expiry_date"].strftime("%Y-%m-%d")
-            lines.append(f"   {cert['domain']} — 剩余 {cert['days_left']} 天 (到期: {expiry} | 颁发: {cert['issuer']})")
-        lines.append("")
-
-    if cats["valid"]:
-        lines.append("✅ 证书状态正常:")
-        for cert in cats["valid"]:
-            lines.append(f"   {cert['domain']} — 剩余 {cert['days_left']} 天")
-        lines.append("")
-
-    if cats["error"]:
-        lines.append("🔧 检查失败的域名:")
-        for cert in cats["error"]:
-            lines.append(f"   {cert['domain']} — 错误: {cert['error']}")
-        lines.append("")
-
-    lines.append("📈 统计信息:")
-    lines.append(f"   ✅ 正常: {len(cats['valid'])}")
-    lines.append(f"   ⚠️ 警告: {len(cats['warning'])}")
-    lines.append(f"   ❌ 过期: {len(cats['expired'])}")
-    lines.append(f"   🔧 失败: {len(cats['error'])}")
-    lines.append("")
     lines.append("─" * 18)
     lines.append(f"🕒 执行时间: {beijing_time_str()}")
     return "\n".join(lines)
