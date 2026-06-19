@@ -463,18 +463,29 @@ def _send_telegram_file(title: str, content: str, file_path: str) -> bool:
         return False
 
 
-def _send_telegram_photo(title: str, image_url: str) -> bool:
-    """通过 Telegram 发送单张图片（从 URL 下载后上传）"""
+def _send_telegram_photo(title: str, image_source: str) -> bool:
+    """通过 Telegram 发送单张图片（支持 URL 或本地文件路径）"""
     base_url, chat_id, proxies = _get_telegram_kwargs()
-    if not base_url or not image_url:
+    if not base_url or not image_source:
         return False
     try:
-        img_resp = requests.get(image_url, timeout=15, proxies=proxies)
-        if not img_resp.ok:
-            return False
+        # 判断是本地文件还是 URL
+        if os.path.isfile(image_source):
+            # 本地文件
+            with open(image_source, "rb") as f:
+                photo_data = f.read()
+            filename = os.path.basename(image_source)
+        else:
+            # URL，下载图片
+            img_resp = requests.get(image_source, timeout=15, proxies=proxies)
+            if not img_resp.ok:
+                return False
+            photo_data = img_resp.content
+            filename = "image.png"
+
         url = f"{base_url}/sendPhoto"
         resp = requests.post(url, data={"chat_id": chat_id, "caption": title},
-                            files={"photo": ("image.png", img_resp.content, "image/png")},
+                            files={"photo": (filename, photo_data, "image/png")},
                             proxies=proxies, timeout=20)
         return resp.json().get("ok", False)
     except Exception:
