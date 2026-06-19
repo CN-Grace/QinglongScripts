@@ -65,7 +65,7 @@ https://github.com/CN-Grace/QinglongScripts.git
 
 ## ⚙️ 环境变量 | Environment Variables
 
-请在青龙面板的「环境变量」中配置各脚本所需的变量，详见 [`.env.example`](.env.example) 文件。
+请在青龙面板的「环境变量」中配置各脚本所需的变量，详见 [`env.json`](env.json) 文件。
 
 ---
 
@@ -125,7 +125,7 @@ https://github.com/CN-Grace/QinglongScripts.git
 |:---|:---|:---|
 | 💬 一言（随机句子） | `HITOKOTO` | 通知内容末尾附加一条随机句子，默认启用，设为 `false` 可关闭 |
 
-只需在环境变量中配置对应渠道即可启用，详见 [`.env.example`](.env.example) 文件。✅
+只需在环境变量中配置对应渠道即可启用，详见 [`env.json`](env.json) 文件。✅
 
 ---
 
@@ -151,7 +151,7 @@ QinglongScripts/
 │   └── src/                # 资源文件
 │       ├── scripts/        # 脚本图标
 │       └── notify/         # 通知渠道图标
-├── .env.example            # 环境变量示例
+├── env.json                # 环境变量模板（青龙面板可直接导入）
 ├── .gitignore
 ├── Airport.py              # 机场签到
 ├── Aliyun.py               # 阿里云盘签到

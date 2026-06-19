@@ -1,6 +1,7 @@
 Password
 .idea
 *.json
+!env.json
 __pycache__
 .env
 *.har
