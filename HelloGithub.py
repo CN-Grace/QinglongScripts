@@ -178,7 +178,7 @@ def build_project_parts(categories: List[Dict], total_items: int, total_categori
             text = format_project_info(item, proj_num, total_items)
             # 如果是分类最后一个项目，添加分割线
             if i == len(items) - 1:
-                text += f"{'─' * 40}\n\n"
+                text += f"\n{'─' * 40}\n"
             parts.append(text)
         cat_num += 1
     return parts
@@ -187,7 +187,7 @@ def build_project_parts(categories: List[Dict], total_items: int, total_categori
 def build_footer(title: str, volume_num: int, total_items: int, total_categories: int) -> str:
     """构建月刊总结"""
     read_more = f"https://hellogithub.com/zh/periodical/volume/{volume_num}/"
-    return f"\n{'─' * 40}\n\n🎉 {title} 完整内容已发送完毕！\n\n📊 本期共 {total_items} 个项目，{total_categories} 个分类\n🔗 在线阅读: {read_more}\n🌟 GitHub: https://github.com/521xueweihan/HelloGitHub"
+    return f"\n🎉 {title} 完整内容已发送完毕！\n\n📊 本期共 {total_items} 个项目，{total_categories} 个分类\n🔗 在线阅读: {read_more}\n🌟 GitHub: https://github.com/521xueweihan/HelloGitHub"
 
 
 def create_report_pages(content: Dict) -> List[str]:
@@ -228,8 +228,8 @@ def create_report_pages(content: Dict) -> List[str]:
         # 如果当前页已满，且还有剩余页数，开始新页
         if current_chars + len(part) > target_chars_per_message and len(pages) < message_count - 1:
             pages.append(current_page)
-            current_page = f"📋 第 {volume_num} 期 - 项目详情\n\n"
-            current_chars = len(current_page)
+            current_page = ""
+            current_chars = 0
 
         current_page += part
         current_chars += len(part)
