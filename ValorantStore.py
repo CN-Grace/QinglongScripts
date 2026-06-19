@@ -257,22 +257,51 @@ def download_image(url: str, timeout: int = 10) -> str:
         return None
 
 
+def get_font_path() -> str:
+    """获取字体路径，优先使用脚本目录的字体，其次查找系统字体"""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    local_font = os.path.join(script_dir, "font.ttf")
+
+    # 1. 优先使用脚本目录的字体
+    if os.path.exists(local_font):
+        return local_font
+
+    # 2. 查找系统中文字体
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["fc-list", ":lang=zh", "-f", "%{file}\n"],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0:
+            fonts = [f.strip() for f in result.stdout.strip().split("\n") if f.strip()]
+            if fonts:
+                return fonts[0]
+    except Exception:
+        pass
+
+    # 3. 常见字体路径
+    for path in [
+        "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+        "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    ]:
+        if os.path.exists(path):
+            return path
+
+    return None
+
+
 def build_shop_image(items: list) -> str:
     """构建商店图片，返回图片文件路径"""
     processed_images = []
 
-    # 查找中文字体
-    font_path = None
-    possible_fonts = [
-        "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",  # 文泉驿正黑
-        "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",  # 文泉驿微米黑
-        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",  # Noto Sans CJK
-        "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",  # Droid Sans
-    ]
-    for fp in possible_fonts:
-        if os.path.exists(fp):
-            font_path = fp
-            break
+    # 获取字体
+    font_path = get_font_path()
+    if font_path:
+        log_info(f"使用字体: {font_path}")
+    else:
+        log_warning("未找到中文字体，文字可能显示为方框")
 
     for i, item in enumerate(items):
         name = item.get("goods_name", "未知")
