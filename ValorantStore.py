@@ -11,8 +11,10 @@ new Env("掌瓦每日商店推送")
 import os
 import json
 import requests
+import tempfile
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
+from PIL import Image as PILImage, ImageDraw, ImageFont
 
 from utils import log_info, log_success, log_warning, log_error, beijing_time_str
 from notifier import send as notify_send, send_photos as notify_send_photos
@@ -241,6 +243,137 @@ def build_report(items: list, nickname: str, end_ts: int) -> str:
     return "\n".join(lines)
 
 
+def download_image(url: str, timeout: int = 10) -> str:
+    """下载图片到临时文件，返回文件路径"""
+    try:
+        resp = requests.get(url, timeout=timeout)
+        resp.raise_for_status()
+        suffix = ".png" if "png" in resp.headers.get("content-type", "") else ".jpg"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as f:
+            f.write(resp.content)
+            return f.name
+    except Exception as e:
+        log_error(f"下载图片失败: {e}")
+        return None
+
+
+def build_shop_image(items: list) -> str:
+    """构建商店图片，返回图片文件路径"""
+    processed_images = []
+
+    for i, item in enumerate(items):
+        name = item.get("goods_name", "未知")
+        price = item.get("rmb_price", "0")
+        quality = item.get("quality", "")
+        bg_url = item.get("bg_image", "")
+        goods_url = item.get("goods_pic", "")
+
+        if not bg_url or not goods_url:
+            log_warning(f"商品 {name} 缺少图片URL，跳过")
+            continue
+
+        # 下载图片
+        bg_path = download_image(bg_url)
+        goods_path = download_image(goods_url)
+
+        if not bg_path or not goods_path:
+            log_warning(f"商品 {name} 图片下载失败，跳过")
+            continue
+
+        try:
+            # 打开图片
+            bg_img = PILImage.open(bg_path)
+            goods_img = PILImage.open(goods_path)
+
+            # 调整商品图尺寸
+            height = 180
+            width = int((goods_img.width * height) / goods_img.height)
+            goods_resized = goods_img.resize((width, height))
+
+            # 计算居中粘贴位置
+            x = (bg_img.width - goods_resized.width) // 2
+            y = (bg_img.height - goods_resized.height) // 2
+
+            # 创建新图像
+            new_img = PILImage.new('RGB', bg_img.size)
+            new_img.paste(bg_img, (0, 0))
+
+            # 粘贴商品图（支持透明通道）
+            if goods_resized.mode in ('RGBA', 'LA'):
+                new_img.paste(goods_resized, (x, y), mask=goods_resized)
+            else:
+                new_img.paste(goods_resized, (x, y))
+
+            # 绘制文字
+            draw = ImageDraw.Draw(new_img)
+
+            # 加载字体
+            try:
+                font = ImageFont.truetype("arial.ttf", 36)
+            except IOError:
+                font = ImageFont.load_default()
+
+            # 商品名称
+            text_position = (36, new_img.height - 50)
+            text_color = (255, 255, 255)  # 白色
+            draw.text(text_position, name, fill=text_color, font=font)
+
+            # 商品价格
+            price_text = f"{price} 点券"
+            price_bbox = draw.textbbox((0, 0), price_text, font=font)
+            price_width = price_bbox[2] - price_bbox[0]
+            price_position = (new_img.width - price_width - 36, new_img.height - 50)
+            draw.text(price_position, price_text, fill=text_color, font=font)
+
+            # 保存处理后的图片
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as f:
+                new_img.save(f)
+                processed_images.append(f.name)
+
+            log_info(f"商品 {name} 图片处理完成")
+
+        except Exception as e:
+            log_error(f"商品 {name} 图片处理失败: {e}")
+        finally:
+            # 清理临时文件
+            for path in [bg_path, goods_path]:
+                if path and os.path.exists(path):
+                    os.remove(path)
+
+    if not processed_images:
+        log_error("没有商品图片处理成功")
+        return None
+
+    # 合并所有图片
+    images = [PILImage.open(img_path) for img_path in processed_images]
+
+    # 计算合并后图片尺寸
+    max_width = max(img.width for img in images)
+    total_height = sum(img.height for img in images) + (len(images) - 1) * 20  # 20px 间距
+
+    # 创建合并后的图片
+    merged_image = PILImage.new('RGB', (max_width, total_height), color='white')
+
+    # 将所有图片垂直拼接
+    y_offset = 0
+    for img in images:
+        merged_image.paste(img, (0, y_offset))
+        y_offset += img.height + 20
+
+    # 保存合并后的图片
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as f:
+        merged_image.save(f)
+        merged_image_path = f.name
+
+    # 清理临时文件
+    for path in processed_images:
+        if os.path.exists(path):
+            os.remove(path)
+
+    log_info(f"商店图片生成完成: {merged_image_path}")
+    return merged_image_path
+
+
 def main():
     if not VALORANT_COOKIE:
         log_error("未配置 VALORANT_COOKIE，请在环境变量中设置")
@@ -280,30 +413,26 @@ def main():
     items, end_ts = get_daily_store(session)
     if not items:
         log_warning("未获取到商店内容，可能今日未刷新")
-        notify_send("掌瓦每日商店", "⚠️ 未获取到商店内容，请检查 Cookie 或稍后重试")
+        notify_send("🔫 掌瓦每日商店", "⚠️ 未获取到商店内容，请检查 Cookie 或稍后重试")
         return
 
-    # 构建文字报告
-    report = build_report(items, nickname, end_ts)
+    # 构建商店图片
+    shop_image_path = build_shop_image(items)
 
-    # 构建图片列表
-    photos = []
-    for item in items:
-        name = item.get("goods_name", "未知")
-        price = item.get("rmb_price", "?")
-        quality = item.get("quality", "")
-        image_url = item.get("goods_pic", "")
-        if not image_url:
-            continue
-        quality_name, quality_emoji = QUALITY_MAP.get(quality, ("未知", "⬜️"))
-        photos.append({
-            "image": image_url,
-            "caption": f"{quality_emoji} {name}  |  💰 {price} 点券 ({quality_name})",
-        })
-
-    # 通知: 文本推所有通道, 图片仅 Telegram
-    notify_send_photos("🔫 掌瓦每日商店", report, photos, caption_with_title=False)
-    log_info(f"推送完成: 文字 + {len(photos)} 张图片")
+    if shop_image_path:
+        # 发送图片
+        from notifier import send_file as notify_send_file
+        notify_send_file("🔫 掌瓦每日商店", f"👤 {nickname}\n⏰ 刷新时间: {datetime.fromtimestamp(end_ts, tz=TZ_BEIJING).strftime('%Y-%m-%d %H:%M')}", shop_image_path)
+        # 清理临时文件
+        if os.path.exists(shop_image_path):
+            os.remove(shop_image_path)
+        log_info("推送完成: 商店图片")
+    else:
+        # 图片生成失败，回退到文字报告
+        log_warning("商店图片生成失败，使用文字报告")
+        report = build_report(items, nickname, end_ts)
+        notify_send("🔫 掌瓦每日商店", report)
+        log_info("推送完成: 文字报告")
 
 
 if __name__ == "__main__":
