@@ -133,7 +133,6 @@ def format_project_info(project: Dict, project_num: int, total_projects: int) ->
         lines.append(f"     数据: {' | '.join(stats)}")
     if github_url:
         lines.append(f"     链接: {github_url}")
-    lines.append("")
     return "\n".join(lines)
 
 
@@ -178,16 +177,16 @@ def build_project_parts(categories: List[Dict], total_items: int, total_categori
             text = format_project_info(item, proj_num, total_items)
             # 如果是分类最后一个项目，添加分割线
             if i == len(items) - 1:
-                text += f"\n{'─' * 40}\n"
+                text += f"{'─' * 40}"
             parts.append(text)
         cat_num += 1
     return parts
 
 
-def build_footer(title: str, volume_num: int, total_items: int, total_categories: int) -> str:
+def build_footer(volume_num: int) -> str:
     """构建月刊总结"""
     read_more = f"https://hellogithub.com/zh/periodical/volume/{volume_num}/"
-    return f"\n🎉 {title} 完整内容已发送完毕！\n\n📊 本期共 {total_items} 个项目，{total_categories} 个分类\n🔗 在线阅读: {read_more}\n🌟 GitHub: https://github.com/521xueweihan/HelloGitHub"
+    return f"\n🔗 在线阅读: {read_more}\n🌟 GitHub: https://github.com/521xueweihan/HelloGitHub"
 
 
 def create_report_pages(content: Dict) -> List[str]:
@@ -207,7 +206,7 @@ def create_report_pages(content: Dict) -> List[str]:
     # 1. 构建各部分内容
     header = build_header(title, desc, volume_num, total_items, total_categories, pub_date)
     project_parts = build_project_parts(categories, total_items, total_categories)
-    footer = build_footer(title, volume_num, total_items, total_categories)
+    footer = build_footer(volume_num)
 
     # 2. 计算总字符数
     total_chars = len(header) + sum(len(p) for p in project_parts) + len(footer)
