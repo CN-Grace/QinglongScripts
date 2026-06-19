@@ -435,10 +435,11 @@ def main():
     if shop_image_path:
         # 构建图片描述
         end_time = datetime.fromtimestamp(end_ts, tz=TZ_BEIJING).strftime("%Y-%m-%d %H:%M") if end_ts else "未知"
-        caption = f"👤 账号: {nickname}\n⏰ 刷新时间: {end_time}\n\n{'─' * 18}\n🕒 执行时间: {beijing_time_str()}"
+        caption = f"🔫 掌瓦每日商店\n\n👤 账号: {nickname}\n⏰ 刷新时间: {end_time}\n\n{'─' * 18}\n🕒 执行时间: {beijing_time_str()}"
 
-        # 发送图片
-        notify_send_photos("🔫 掌瓦每日商店", caption, [{"image": shop_image_path, "caption": ""}])
+        # 直接发送图片
+        from notifier import _send_telegram_photo
+        _send_telegram_photo(caption, shop_image_path)
         # 清理临时文件
         if os.path.exists(shop_image_path):
             os.remove(shop_image_path)
