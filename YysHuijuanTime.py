@@ -162,20 +162,37 @@ def save_data(data):
         log_error(f"保存JSON失败: {e}")
 
 
+def is_activity_active(end_time_str):
+    """判断活动是否正在进行"""
+    try:
+        # 解析结束时间
+        end_time = datetime.strptime(end_time_str, "%Y-%m-%d %H:%M")
+        return datetime.now() < end_time
+    except Exception as e:
+        log_error(f"解析活动时间失败: {e}")
+        return False
+
+
 def build_report(data):
     """构建报告"""
-    lines = [
-        "🎮 阴阳师绘卷活动时间查询报告",
-        "",
-        f"📋 活动名称: {data.get('活动名称', '未知')}",
-        f"📅 开始时间: {data.get('开始时间', '未知')} (维护后)",
-        f"📅 结束时间: {data.get('结束时间', '未知')}",
-        "",
-        f"📰 最新公告: {data.get('最新公告', '未知')}",
-        "",
-        "─" * 18,
-        f"🕒 查询时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-    ]
+    # 判断活动是否正在进行
+    end_time = data.get('结束时间', '')
+    if end_time and not is_activity_active(end_time):
+        # 活动已结束
+        lines = [
+            "🎮 阴阳师绘卷活动",
+            "",
+            "目前无活动",
+        ]
+    else:
+        # 活动进行中
+        lines = [
+            "🎮 阴阳师绘卷活动",
+            "",
+            f"📋 活动名称: {data.get('活动名称', '未知')}",
+            f"📅 开始时间: {data.get('开始时间', '未知')} (维护后)",
+            f"📅 结束时间: {end_time}",
+        ]
     return "\n".join(lines)
 
 
