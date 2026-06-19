@@ -10,15 +10,31 @@
 
 | 变量名 | 必填 | 说明 |
 |--------|------|------|
-| `CF_API_TOKEN` | ✅ | Cloudflare API Token（需要 DNS:Read 权限） |
+| `CF_API_TOKEN` | 二选一 | Cloudflare API Token（需要 DNS:Read 权限） |
+| `CF_API_EMAIL` | 二选一 | Cloudflare 账号邮箱（配合 Global API Key） |
+| `CF_API_KEY` | 二选一 | Global API Key |
 | `CF_ZONE_IDS` | ✅ | Cloudflare Zone ID，多个用逗号分隔 |
 | `CF_DOMAINS` | ✅ | 自选顶级域名，多个用逗号分隔，与 CF_ZONE_IDS 一一对应 |
 | `SSL_WARNING_DAYS` | ❌ | 证书到期警告天数，默认 30 天 |
 
+### 认证方式
+
+**方式1: API Token（推荐）**
+```
+CF_API_TOKEN=your_api_token_here
+```
+
+**方式2: Global API Key**
+```
+CF_API_EMAIL=your_email@example.com
+CF_API_KEY=your_global_api_key_here
+```
+
 ### 配置示例
 
 ```
-CF_API_TOKEN=your_api_token_here
+CF_API_EMAIL=user@example.com
+CF_API_KEY=1234567890abcdef1234567890abcdef
 CF_ZONE_IDS=zone_id_1,zone_id_2
 CF_DOMAINS=example.com,example.org
 ```
@@ -34,79 +50,29 @@ CF_DOMAINS=example.com,example.org
 GET https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records?type=A
 ```
 
-**请求头:**
+**请求头 (API Token):**
 ```
 Authorization: Bearer {CF_API_TOKEN}
 Content-Type: application/json
 ```
 
-**响应示例:**
-```json
-{
-  "success": true,
-  "result": [
-    {
-      "name": "www.example.com",
-      "type": "A",
-      "content": "192.168.1.1"
-    },
-    {
-      "name": "api.example.com",
-      "type": "A",
-      "content": "192.168.1.2"
-    }
-  ],
-  "result_info": {
-    "page": 1,
-    "per_page": 100,
-    "total_pages": 1,
-    "count": 2,
-    "total": 2
-  }
-}
+**请求头 (Global API Key):**
+```
+X-Auth-Email: {CF_API_EMAIL}
+X-Auth-Key: {CF_API_KEY}
+Content-Type: application/json
 ```
 
 ### 2. 检查 SSL 证书
 
 对获取到的所有域名（自动去重），使用 Python ssl 模块连接 443 端口获取证书信息。
 
-## 输出报告格式
-
-```
-🔔 SSL 证书检查报告
-
-⏰ 检查时间: 2026-06-19 00:00:00
-📊 总计: 5 个域名
-
-❌ 已过期的证书:
-   expired.example.com — 已过期 3 天 (到期: 2026-06-16)
-
-⚠️ 即将过期的证书 (30天内):
-   soon.example.com — 剩余 15 天 (到期: 2026-07-04 | 颁发: Let's Encrypt)
-
-✅ 证书状态正常:
-   www.example.com — 剩余 365 天
-   api.example.org — 剩余 180 天
-
-📈 统计信息:
-   ✅ 正常: 2
-   ⚠️ 警告: 1
-   ❌ 过期: 1
-   🔧 失败: 1
-
-──────────────────
-🕒 执行时间: 2026-06-19 00:00:00
-```
-
-## Cloudflare API Token 创建指南
+## Global API Key 获取方法
 
 1. 登录 [Cloudflare Dashboard](https://dash.cloudflare.com)
 2. 点击右上角头像 → **My Profile** → **API Tokens**
-3. 点击 **Create Token**
-4. 选择 **Edit zone DNS** 模板（或自定义权限）
-5. 权限设置：`Zone - DNS - Read`
-6. 区域选择：选择你需要监控的域名（可多选）
-7. 创建后复制 Token（只显示一次）
+3. 页面底部 **API Keys** 部分，点击 **Global API Key** 查看
+4. 需要输入密码验证后才能查看
 
 ## Zone ID 获取方法
 

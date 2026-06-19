@@ -20,8 +20,12 @@ from utils import log_info, log_success, log_warning, log_error, beijing_now, be
 from notifier import send as notify_send
 
 # ==================== 用户配置 ====================
-# Cloudflare 配置
+# Cloudflare 配置（支持两种认证方式）
+# 方式1: API Token（推荐，权限更细）
 CF_API_TOKEN = os.environ.get("CF_API_TOKEN", "")
+# 方式2: Global API Key（需要邮箱）
+CF_API_EMAIL = os.environ.get("CF_API_EMAIL", "")
+CF_API_KEY = os.environ.get("CF_API_KEY", "")
 # 多个 Zone ID 用逗号分隔，与 CF_DOMAINS 一一对应
 CF_ZONE_IDS = [z.strip() for z in os.environ.get("CF_ZONE_IDS", "").split(",") if z.strip()]
 # 多个顶级域名用逗号分隔，与 CF_ZONE_IDS 一一对应
@@ -41,10 +45,16 @@ def get_cloudflare_a_records(zone_id: str, domain: str) -> List[str]:
     page = 1
     per_page = 100
 
-    headers = {
-        "Authorization": f"Bearer {CF_API_TOKEN}",
-        "Content-Type": "application/json"
-    }
+    # 根据配置的认证方式设置请求头
+    headers = {"Content-Type": "application/json"}
+    if CF_API_TOKEN:
+        headers["Authorization"] = f"Bearer {CF_API_TOKEN}"
+    elif CF_API_EMAIL and CF_API_KEY:
+        headers["X-Auth-Email"] = CF_API_EMAIL
+        headers["X-Auth-Key"] = CF_API_KEY
+    else:
+        log_error("未配置 Cloudflare 认证信息，请设置 CF_API_TOKEN 或 CF_API_EMAIL + CF_API_KEY")
+        return []
 
     try:
         while True:
@@ -99,8 +109,15 @@ def get_cloudflare_a_records(zone_id: str, domain: str) -> List[str]:
 
 def get_all_domains() -> List[str]:
     """从所有配置的 Cloudflare Zone 获取域名列表"""
-    if not CF_API_TOKEN or not CF_ZONE_IDS or not CF_DOMAINS:
-        log_error("Cloudflare 配置不完整，请检查 CF_API_TOKEN、CF_ZONE_IDS、CF_DOMAINS 环境变量")
+    # 检查认证配置
+    has_token = bool(CF_API_TOKEN)
+    has_key = bool(CF_API_EMAIL and CF_API_KEY)
+    if not has_token and not has_key:
+        log_error("Cloudflare 认证配置不完整，请设置 CF_API_TOKEN 或 CF_API_EMAIL + CF_API_KEY")
+        return []
+
+    if not CF_ZONE_IDS or not CF_DOMAINS:
+        log_error("Cloudflare 配置不完整，请检查 CF_ZONE_IDS 和 CF_DOMAINS 环境变量")
         return []
 
     if len(CF_ZONE_IDS) != len(CF_DOMAINS):
