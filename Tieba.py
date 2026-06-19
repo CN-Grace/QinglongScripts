@@ -4,9 +4,8 @@ cron: 0 0 * * *
 new Env("百度贴吧签到")
 百度贴吧 每日自动签到脚本
 - 获取用户登录状态
-- 获取关注的贴吧列表（含等级、经验值）
+- 获取关注的贴吧列表
 - 对每个贴吧进行签到
-- 统计签到结果和等级分布
 - 签到失败时保存调试数据到 debug 目录
 """
 
@@ -169,41 +168,6 @@ def get_favorite(session: requests.Session, bduss: str) -> List[Dict]:
     return forums
 
 
-def build_level_summary(forums: List[Dict]) -> Dict:
-    """从贴吧列表中提取等级汇总"""
-    total_exp = 0
-    level_stats = {}
-    forum_levels = []
-
-    for f in forums:
-        name = f.get("name", "")
-        level_id = int(f.get("level_id", 0))
-        cur_score = int(f.get("cur_score", 0))
-        levelup_score = int(f.get("levelup_score", 0))
-        total_exp += cur_score
-
-        if level_id not in level_stats:
-            level_stats[level_id] = {"count": 0, "total_exp": 0}
-        level_stats[level_id]["count"] += 1
-        level_stats[level_id]["total_exp"] += cur_score
-
-        forum_levels.append({
-            "name": name,
-            "level_id": level_id,
-            "cur_score": cur_score,
-            "levelup_score": levelup_score,
-            "exp_percent": round(cur_score / levelup_score * 100, 1) if levelup_score > 0 else 0,
-        })
-
-    sorted_levels = sorted(level_stats.items(), key=lambda x: x[0], reverse=True)
-    return {
-        "forum_count": len(forums),
-        "total_exp": total_exp,
-        "level_stats": sorted_levels,
-        "forum_levels": forum_levels,
-    }
-
-
 def sign_forums(session: requests.Session, bduss: str, forums: List[Dict], tbs: str) -> Dict[str, Any]:
     """对贴吧列表进行签到"""
     success_count = 0
@@ -230,9 +194,9 @@ def sign_forums(session: requests.Session, bduss: str, forums: List[Dict], tbs: 
         time.sleep(delay)
         last_request_time = time.time()
 
-        if (idx + 1) % 10 == 0:
+        if (idx + 1) % 10 == 1 and idx > 0:
             extra_delay = random.uniform(5, 10)
-            log_info(f"已签到 {idx + 1}/{total} 个贴吧，休息 {extra_delay:.2f} 秒")
+            log_info(f"已签到 {idx}/{total} 个贴吧，休息 {extra_delay:.2f} 秒")
             time.sleep(extra_delay)
 
         forum_name = forum.get("name", "")
@@ -281,43 +245,25 @@ def sign_forums(session: requests.Session, bduss: str, forums: List[Dict], tbs: 
     return {"total": total, "success": success_count, "exist": exist_count, "shield": shield_count, "error": error_count, "details": details}
 
 
-def build_report(stats: Dict, user_name: str, details: List[Dict], level_summary: Optional[Dict] = None) -> str:
+def build_report(stats: Dict, user_name: str, details: List[Dict]) -> str:
     """构建签到报告"""
     lines = ["📢 百度贴吧 签到报告", "", f"👤 账号: {user_name}", ""]
 
-    lines.append("📊 签到统计")
-    lines.append(f"📌 贴吧总数: {stats['total']}")
-    lines.append(f"✅ 签到成功: {stats['success']}")
-    lines.append(f"⚠️ 已经签到: {stats['exist']}")
-    lines.append(f"🚫 被屏蔽的: {stats['shield']}")
-    lines.append(f"❌ 签到失败: {stats['error']}")
-
-    if level_summary:
-        lines.append("")
-        lines.append("🎯 等级汇总")
-        lines.append(f"📈 总经验值: {level_summary['total_exp']:,}")
-        top_levels = level_summary["level_stats"][:5]
-        level_dist = "  |  ".join([f"Lv.{lv}: {info['count']}个吧" for lv, info in top_levels])
-        lines.append(f"🏅 等级分布: {level_dist}")
-
     if details:
-        lines.append("")
         lines.append("📋 详细签到情况")
         for d in details:
             name = d["name"]
             status = d["status"]
-            rank = d.get("rank")
             level = d.get("level", "?")
             if status == "success":
                 emoji = "✅"
-                rank_text = f" (第{rank}个)" if rank else ""
             elif status == "exist":
-                emoji = "⚠️"; rank_text = ""
+                emoji = "⚠️"
             elif status == "shield":
-                emoji = "🚫"; rank_text = ""
+                emoji = "🚫"
             else:
-                emoji = "❌"; rank_text = ""
-            lines.append(f"{emoji} {name} Lv.{level}{rank_text}")
+                emoji = "❌"
+            lines.append(f"{emoji}{name} Lv.{level}")
 
     lines.append("")
     lines.append("─" * 18)
@@ -331,33 +277,30 @@ def main() -> Dict:
     bduss = cookie_dict.get("BDUSS", "")
     if not bduss:
         log_error("Cookie 中未找到 BDUSS，请检查配置")
-        return {"user_name": "未知", "stats": {"total": 0, "success": 0, "exist": 0, "shield": 0, "error": 0}, "details": [], "level_summary": None}
+        return {"user_name": "未知", "stats": {"total": 0, "success": 0, "exist": 0, "shield": 0, "error": 0}, "details": []}
 
     session = create_session(TIEBA_COOKIE)
 
     tbs, user_name = get_user_info(session)
     if not tbs:
         log_error(user_name)
-        return {"user_name": "登录失败", "stats": {"total": 0, "success": 0, "exist": 0, "shield": 0, "error": 0}, "details": [], "level_summary": None}
+        return {"user_name": "登录失败", "stats": {"total": 0, "success": 0, "exist": 0, "shield": 0, "error": 0}, "details": []}
 
     log_success(f"登录成功，用户名: {user_name}")
 
     forums = get_favorite(session, bduss=bduss)
     if not forums:
         log_warning("未获取到任何贴吧，请检查 Cookie 或网络")
-        return {"user_name": user_name, "stats": {"total": 0, "success": 0, "exist": 0, "shield": 0, "error": 0}, "details": [], "level_summary": None}
-
-    level_summary = build_level_summary(forums)
-    log_info(f"总经验值: {level_summary['total_exp']:,}，最高等级: Lv.{level_summary['level_stats'][0][0] if level_summary['level_stats'] else '?'}")
+        return {"user_name": user_name, "stats": {"total": 0, "success": 0, "exist": 0, "shield": 0, "error": 0}, "details": []}
 
     result = sign_forums(session, bduss, forums, tbs)
     log_info(f"签到完成: 总数 {result['total']}，成功 {result['success']}，已签 {result['exist']}，屏蔽 {result['shield']}，失败 {result['error']}")
 
-    return {"user_name": user_name, "stats": result, "details": result["details"], "level_summary": level_summary}
+    return {"user_name": user_name, "stats": result, "details": result["details"]}
 
 
 if __name__ == "__main__":
     result = main()
     if result:
-        report = build_report(result["stats"], result["user_name"], result["details"], result.get("level_summary"))
+        report = build_report(result["stats"], result["user_name"], result["details"])
         notify_send("百度贴吧 签到报告", report)
