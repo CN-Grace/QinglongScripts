@@ -6,3 +6,4 @@ __pycache__
 *.har
 .valorant_ct
 node_modules/
+debug/

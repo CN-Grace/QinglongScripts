@@ -7,17 +7,23 @@ new Env("百度贴吧签到")
 - 获取关注的贴吧列表（含等级、经验值）
 - 对每个贴吧进行签到
 - 统计签到结果和等级分布
+- 签到失败时保存调试数据到 debug 目录
 """
 
 import hashlib
+import json
 import os
 import random
 import time
 import requests
+from datetime import datetime
 from typing import Optional, List, Dict, Any
 
 from utils import log_info, log_success, log_warning, log_error, beijing_time_str
 from notifier import send as notify_send
+
+# 调试文件保存目录
+DEBUG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "debug")
 
 # ==================== 用户配置 ====================
 TIEBA_COOKIE = os.environ.get("TIEBA_COOKIE", "")
@@ -66,6 +72,35 @@ def request(session: requests.Session, url: str, method: str = "get", data: Opti
             wait_time = 1.5 * (2 ** i) + random.uniform(0, 1)
             time.sleep(wait_time)
     raise Exception(f"请求失败，已达最大重试次数 {retry}")
+
+
+def save_debug_data(forum_name: str, request_data: Dict, response_data: Dict, error_code: str):
+    """保存签到请求和响应数据到 debug 文件夹"""
+    try:
+        os.makedirs(DEBUG_DIR, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{forum_name}_{error_code}_{timestamp}.json"
+        filepath = os.path.join(DEBUG_DIR, filename)
+
+        debug_data = {
+            "forum_name": forum_name,
+            "error_code": error_code,
+            "timestamp": timestamp,
+            "request": request_data,
+            "response": response_data,
+        }
+
+        # 移除敏感信息
+        if "BDUSS" in debug_data["request"]:
+            debug_data["request"]["BDUSS"] = "***"
+        if "sign" in debug_data["request"]:
+            debug_data["request"]["sign"] = "***"
+
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(debug_data, f, ensure_ascii=False, indent=2)
+        log_info(f"调试数据已保存: {filepath}")
+    except Exception as e:
+        log_error(f"保存调试数据失败: {e}")
 
 
 # ---------- 核心功能 ----------
@@ -232,12 +267,16 @@ def sign_forums(session: requests.Session, bduss: str, forums: List[Dict], tbs: 
                 details.append({"name": forum_name, "status": "shield", "rank": None, "level": level_id})
             else:
                 error_count += 1
-                log_error(f"{log_prefix} 签到失败，错误: {result.get('error_msg', '未知错误')}")
+                log_error(f"{log_prefix} 签到失败，错误码: {error_code}，信息: {result.get('error_msg', '未知错误')}")
                 details.append({"name": forum_name, "status": "error", "rank": None, "level": level_id})
+                # 保存调试数据
+                save_debug_data(forum_name, data, result, error_code)
         except Exception as e:
             error_count += 1
             log_error(f"{log_prefix} 签到异常: {e!s}")
             details.append({"name": forum_name, "status": "error", "rank": None, "level": level_id})
+            # 保存异常调试数据
+            save_debug_data(forum_name, data if 'data' in locals() else {}, {"exception": str(e)}, "exception")
 
     return {"total": total, "success": success_count, "exist": exist_count, "shield": shield_count, "error": error_count, "details": details}
 
