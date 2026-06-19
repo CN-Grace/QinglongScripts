@@ -22,22 +22,13 @@
 |:---:|:---|
 | **名称** | `QinglongScripts` |
 | **类型** | 公开仓库 |
-| **链接** | `https://github.com/CN-Grace/QinglongScripts.git` [📋 复制](#) |
+| **链接** | `https://github.com/CN-Grace/QinglongScripts.git` |
 | **定时类型** | crontab |
 | **定时规则** | `0 0 * * *`（每天自动更新订阅） |
 | **白名单** | 留空（拉取全部脚本） |
 | **黑名单** | 留空 |
 
 > 💡 青龙面板会根据脚本中的 `cron` 注释自动创建定时任务。`notifier.py` 和 `utils.py` 不含 cron 注释，不会被创建任务，可正常拉取和更新。
-
-<details>
-<summary>📋 一键复制订阅链接</summary>
-
-```
-https://github.com/CN-Grace/QinglongScripts.git
-```
-
-</details>
 
 ---
 
