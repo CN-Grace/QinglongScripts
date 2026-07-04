@@ -278,16 +278,19 @@ def draw_game_card(draw, x, y, game, font_title, font_info, font_small, card_w):
         info_y += title_h + 4
 
     # FREE 标签 + 原价
-    draw.rectangle([(x, info_y), (x + 48, info_y + 20)], fill=ACCENT_FREE)
-    draw.text((x + 4, info_y + 2), "FREE", fill="white", font=font_small)
-    draw.text((x + 54, info_y), f"原价 {game['price']['original']}", fill=TEXT_MUTED, font=font_small)
-    info_y += 24
+    free_w = 56
+    free_h = 26
+    draw.rectangle([(x, info_y), (x + free_w, info_y + free_h)], fill=ACCENT_FREE)
+    draw.text((x + 6, info_y + 2), "FREE", fill="white", font=font_info)
+    draw.text((x + free_w + 6, info_y), f"原价 {game['price']['original']}", fill=TEXT_MUTED, font=font_info)
+    info_y += free_h + 6
 
     # 截止时间
     if "free_end" in game:
-        draw.text((x, info_y), f"{game['free_end']} 截止", fill=TEXT_MUTED, font=font_small)
+        draw.text((x, info_y), f"{game['free_end']} 截止", fill=TEXT_MUTED, font=font_info)
+        info_y += 28
 
-    return info_y + 26
+    return info_y + 16
 
 
 def build_image(current, upcoming, font_path):
