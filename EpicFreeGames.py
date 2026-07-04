@@ -246,16 +246,36 @@ def draw_game_card(draw, x, y, game, font_title, font_info, font_small, card_w):
     # 信息区域
     info_y = y + COVER_H + 8
 
-    # 标题（单行截断）
+    # 标题（支持两行换行）
     title_text = game["title"]
     bbox = draw.textbbox((0, 0), title_text, font=font_title)
-    while bbox[2] - bbox[0] > inner_w and len(title_text) > 3:
-        title_text = title_text[:-1]
-        bbox = draw.textbbox((0, 0), title_text + "...", font=font_title)
-    if title_text != game["title"]:
-        title_text += "..."
-    draw.text((x, info_y), title_text, fill=TEXT_PRIMARY, font=font_title)
-    info_y += 32
+    title_w = bbox[2] - bbox[0]
+    title_h = bbox[3] - bbox[1]
+
+    if title_w <= inner_w:
+        # 一行够用
+        draw.text((x, info_y), title_text, fill=TEXT_PRIMARY, font=font_title)
+        info_y += title_h + 6
+    else:
+        # 需要换行：找到合适的断点
+        wrap_at = len(title_text)
+        while wrap_at > 0:
+            test = title_text[:wrap_at]
+            if draw.textbbox((0, 0), test, font=font_title)[2] <= inner_w:
+                break
+            wrap_at -= 1
+        # 第1行
+        line1 = title_text[:wrap_at]
+        draw.text((x, info_y), line1, fill=TEXT_PRIMARY, font=font_title)
+        info_y += title_h + 2
+        # 第2行（放不下则截断加 ...）
+        line2 = title_text[wrap_at:]
+        if draw.textbbox((0, 0), line2, font=font_title)[2] > inner_w:
+            while line2 and draw.textbbox((0, 0), line2 + "...", font=font_title)[2] > inner_w:
+                line2 = line2[:-1]
+            line2 += "..."
+        draw.text((x, info_y), line2, fill=TEXT_PRIMARY, font=font_title)
+        info_y += title_h + 4
 
     # FREE 标签 + 原价
     draw.rectangle([(x, info_y), (x + 48, info_y + 20)], fill=ACCENT_FREE)
