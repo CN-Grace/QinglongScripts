@@ -196,9 +196,10 @@ def parse_discounts(data, free_titles):
             pct, start, end = best
             url_slug = elem.get("urlSlug") or elem.get("productSlug", "").replace("/home", "")
             store_url = f"https://store.epicgames.com/zh-CN/p/{url_slug}" if url_slug else ""
-            # 计算折后价
+            # 计算折后价（originalPrice 单位为分，需 /100 转元）
             original = price_info.get("originalPrice", 0)
-            discounted = round(original * (100 - pct) / 100)
+            discounted = original * (100 - pct) / 100 / 100
+            discounted_str = f"¥{discounted:.0f}" if discounted == int(discounted) else f"¥{discounted:.2f}"
 
             discounts.append({
                 "title": title,
@@ -206,7 +207,7 @@ def parse_discounts(data, free_titles):
                 "image": find_image(elem.get("keyImages", [])),
                 "price": price,
                 "discount_pct": pct,
-                "discounted_price": discounted,
+                "discounted_str": discounted_str,
                 "free_start": bj_time(start),
                 "free_end": bj_time(end),
             })
@@ -361,7 +362,7 @@ def draw_game_card(draw, x, y, game, font_title, font_info, font_small, card_w):
         draw.text((x + 6, info_y + 2), tag_text, fill="white", font=font_info)
         # 原价 → 折后价
         draw.text((x + tag_w + 6, info_y),
-                  f"原价 {game['price']['original']}  {game['discounted_price']}元",
+                  f"原价 {game['price']['original']}  {game['discounted_str']}",
                   fill=TEXT_MUTED, font=font_info)
     else:
         # FREE 标签
@@ -452,7 +453,7 @@ def build_text_report(current, upcoming, discounts):
     if discounts:
         lines.append(f"[ 折扣活动 {len(discounts)} 款 ]")
         for g in discounts:
-            lines.append(f"  {g['title']}  -{g['discount_pct']}%  {g['price']['original']} -> {g['discounted_price']}元  {g.get('free_end', '')} 截止")
+            lines.append(f"  {g['title']}  -{g['discount_pct']}%  {g['price']['original']} -> {g['discounted_str']}  {g.get('free_end', '')} 截止")
     lines.append("")
     lines.append("store.epicgames.com/zh-CN/free-games")
     return "\n".join(lines)
