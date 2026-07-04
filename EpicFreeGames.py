@@ -83,18 +83,22 @@ def extract_game_price_price(elem):
     }
 
 
-def parse_discount_percentage(discount_setting: str) -> int | None:
+def parse_discount_percentage(discount_setting) -> int | None:
     """
-    从 discountSetting 字符串中解析折扣百分比。
-    例如 "@{discountType=PERCENTAGE; discountPercentage=0}" → 0 (免费)
-         "@{discountType=PERCENTAGE; discountPercentage=50}" → 50 (半价)
+    从 discountSetting 中解析折扣百分比。支持字符串和字典两种格式：
+      - str:  "@{discountType=PERCENTAGE; discountPercentage=0}"
+      - dict: {"discountType": "PERCENTAGE", "discountPercentage": 0}
     返回 None 表示无法解析。
     """
     if not discount_setting:
         return None
-    m = re.search(r"discountPercentage=(\d+)", discount_setting)
-    if m:
-        return int(m.group(1))
+    if isinstance(discount_setting, dict):
+        pct = discount_setting.get("discountPercentage")
+        return int(pct) if pct is not None else None
+    if isinstance(discount_setting, str):
+        m = re.search(r"discountPercentage=(\d+)", discount_setting)
+        if m:
+            return int(m.group(1))
     return None
 
 
