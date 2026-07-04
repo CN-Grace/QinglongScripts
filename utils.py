@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""QinglongScripts 公共工具模块"""
+# QinglongScripts 公共工具模块
 
 import time
 from datetime import datetime, timedelta, timezone

@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
-"""
-cron: 0 8 1 * *
-new Env("HelloGitHub月刊")
-HelloGitHub 月刊更新提醒
-每月运行一次，检查并发送最新月刊内容。
-支持分多条消息发送完整内容，基于字符长度分段。
-"""
+# cron: 0 8 1 * *
+# new Env("HelloGitHub月刊")
+# HelloGitHub 月刊更新提醒
+# 每月运行一次，检查并发送最新月刊内容。
+# 支持分多条消息发送完整内容，基于字符长度分段。
 
 import json
 import os

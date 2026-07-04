@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
-"""
-cron: 0 0 * * *
-new Env("阿里云盘签到")
-阿里云盘 每日签到脚本
-- 刷新 Access Token
-- 获取累计签到天数和奖励信息
-"""
+# cron: 0 0 * * *
+# new Env("阿里云盘签到")
+# 阿里云盘 每日签到脚本
+# - 刷新 Access Token
+# - 获取累计签到天数和奖励信息
 
 import os
 import requests

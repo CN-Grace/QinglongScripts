@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
-"""
-cron: 0 0 * * *
-new Env("Bitwarden备份")
-Bitwarden 自动备份脚本（带哈希比较，避免重复同步）
-- 自动登录 Bitwarden 服务器并获取所有密码数据
-- 将密码数据保存到本地 JSON 文件
-- 比较今天与昨天的备份文件哈希，若无变化则跳过 WebDAV 同步
-- 将备份文件同步到 WebDAV 服务器（仅当有更新时）
-"""
+# cron: 0 0 * * *
+# new Env("Bitwarden备份")
+# Bitwarden 自动备份脚本（带哈希比较，避免重复同步）
+# - 自动登录 Bitwarden 服务器并获取所有密码数据
+# - 将密码数据保存到本地 JSON 文件
+# - 比较今天与昨天的备份文件哈希，若无变化则跳过 WebDAV 同步
+# - 将备份文件同步到 WebDAV 服务器（仅当有更新时）
 
 import os
 import json

@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
-"""
-QinglongScripts 统一通知模块
-支持 23 种通知渠道，自动检测已配置渠道并全部推送。
-
-核心 API:
-    send(title, content)        — 文本通知
-    send_file(title, content, file_path) — 带附件的通知
-
-渠道配置详见 .env.example
-"""
+# QinglongScripts 统一通知模块
+# 支持 23 种通知渠道，自动检测已配置渠道并全部推送。
+#
+# 核心 API:
+#     send(title, content)        — 文本通知
+#     send_file(title, content, file_path) — 带附件的通知
+#
+# 渠道配置详见 env.json
 
 import base64
 import hashlib

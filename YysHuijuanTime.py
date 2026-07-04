@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-cron: 0 0 * * *
-new Env("阴阳师绘卷时间获取")
-从阴阳师官网获取最新绘卷活动时间信息
-"""
+# cron: 0 0 * * *
+# new Env("阴阳师绘卷时间获取")
+# 从阴阳师官网获取最新绘卷活动时间信息
 import json
 import os
 import re

@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
-"""
-cron: 0 0 * * *
-new Env("SSL证书检查")
-SSL 证书检查脚本
-- 通过 Cloudflare API 自动获取域名 A 记录列表
-- 批量检查多个域名的 SSL 证书状态
-- 获取证书到期时间、剩余天数、颁发者等信息
-- 分类显示正常、警告、过期和检查失败的证书
-"""
+# cron: 0 0 * * *
+# new Env("SSL证书检查")
+# SSL 证书检查脚本
+# - 通过 Cloudflare API 自动获取域名 A 记录列表
+# - 批量检查多个域名的 SSL 证书状态
+# - 获取证书到期时间、剩余天数、颁发者等信息
+# - 分类显示正常、警告、过期和检查失败的证书
 
 import os
 import ssl

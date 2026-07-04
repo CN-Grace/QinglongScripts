@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-cron: 0 0 * * *
-new Env("NodeSeek签到")
-NodeSeek 论坛自动签到脚本
-- 使用 curl_cffi 模拟浏览器指纹
-- 支持随机延迟签到
-"""
+# cron: 0 0 * * *
+# new Env("NodeSeek签到")
+# NodeSeek 论坛自动签到脚本
+# - 使用 curl_cffi 模拟浏览器指纹
+# - 支持随机延迟签到
 
 import os
 import random
