@@ -9,6 +9,7 @@
 #   EPIC_COUNTRY   - 国家代码，默认 CN
 
 import os
+import re
 import requests
 from datetime import datetime, timezone, timedelta
 
@@ -82,23 +83,52 @@ def extract_game_price_price(elem):
     }
 
 
-def extract_promotion_dates(promotional_offers):
-    """从 promotionalOffers 提取起止时间"""
+def parse_discount_percentage(discount_setting: str) -> int | None:
+    """
+    从 discountSetting 字符串中解析折扣百分比。
+    例如 "@{discountType=PERCENTAGE; discountPercentage=0}" → 0 (免费)
+         "@{discountType=PERCENTAGE; discountPercentage=50}" → 50 (半价)
+    返回 None 表示无法解析。
+    """
+    if not discount_setting:
+        return None
+    m = re.search(r"discountPercentage=(\d+)", discount_setting)
+    if m:
+        return int(m.group(1))
+    return None
+
+
+def is_free_offer(offer: dict) -> bool:
+    """判断单个 promotional offer 是否为免费（discountPercentage == 0）"""
+    ds = offer.get("discountSetting", "")
+    pct = parse_discount_percentage(ds)
+    return pct == 0
+
+
+def extract_free_dates(promotional_offers):
+    """
+    从 promotionalOffers 中提取所有真正免费（discountPercentage=0）的起止时间。
+    过滤掉半价/折扣活动。
+    返回 [(start_str, end_str, end_dt), ...] 按开始时间排序。
+    """
     dates = []
     for block in promotional_offers:
         for offer in block.get("promotionalOffers", []):
+            if not is_free_offer(offer):
+                continue  # 跳过半价/折扣
             start = offer.get("startDate", "")
             end = offer.get("endDate", "")
             if start and end:
                 dates.append((bj_time(start), bj_time(end), bj_datetime(end)))
+    dates.sort(key=lambda x: x[1])  # 按截止时间排序
     return dates
 
 
 def parse_free_games(data):
     """
     解析免费游戏，返回:
-        current: list of dict  — 本周可领
-        upcoming: list of dict — 即将免费
+        current: list of dict  — 本周可领（仅限 100% 免费）
+        upcoming: list of dict — 即将免费（仅限 100% 免费）
     """
     if not data:
         return [], []
@@ -139,44 +169,35 @@ def parse_free_games(data):
         if not promotions:
             continue
 
-        # 判断是否本周免费
+        # === 本周免费 ===
+        # 条件：promotionalOffers 包含 discountPercentage=0 且 discountPrice == 0
         promo_offers = promotions.get("promotionalOffers", [])
-        if promo_offers:
-            dates = extract_promotion_dates(promo_offers)
-            if dates:
-                game["free_start"] = dates[0][0]
-                game["free_end"] = dates[0][1]
-                game["free_end_dt"] = dates[0][2]
-                current.append(game)
+        if promo_offers and game["price"]["original"] != "N/A":
+            # 也验证 price 确认是免费
+            price_info = elem.get("price", {}).get("totalPrice", {})
+            discount_price = price_info.get("discountPrice", -1)
+            if discount_price == 0:
+                dates = extract_free_dates(promo_offers)
+                if dates:
+                    game["free_start"] = dates[0][0]
+                    game["free_end"] = dates[0][1]
+                    game["free_end_dt"] = dates[0][2]
+                    current.append(game)
 
-        # 判断是否即将免费
+        # === 即将免费 ===
+        # 条件：upcomingPromotionalOffers 包含 discountPercentage=0
         upcoming_offers = promotions.get("upcomingPromotionalOffers", [])
         if upcoming_offers:
-            dates = extract_promotion_dates(upcoming_offers)
+            dates = extract_free_dates(upcoming_offers)
             if dates:
-                # 跳过已经在本周列表里的
-                if not promo_offers:
+                # 跳过已在本周列表里的
+                if game["title"] not in {g["title"] for g in current}:
                     game["free_start"] = dates[0][0]
                     game["free_end"] = dates[0][1]
                     game["free_end_dt"] = dates[0][2]
                     upcoming.append(game)
 
-    # 去重
-    seen = set()
-    current_dedup = []
-    for g in current:
-        if g["title"] not in seen:
-            seen.add(g["title"])
-            current_dedup.append(g)
-
-    # 即将列表排除已在本周出现的
-    upcoming_dedup = []
-    for g in upcoming:
-        if g["title"] not in seen:
-            seen.add(g["title"])
-            upcoming_dedup.append(g)
-
-    return current_dedup, upcoming_dedup
+    return current, upcoming
 
 
 # ---------- 报告 ----------
