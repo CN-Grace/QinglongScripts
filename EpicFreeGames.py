@@ -222,118 +222,104 @@ def draw_section_header(draw, y, width, text, accent_color, font):
     return y + BAR_H
 
 
-def draw_game_row(draw, y, game, font_title, font_info, font_small, canvas_width):
-    """绘制单款游戏的卡片行：左侧封面 + 右侧信息"""
-    # 下载封面
+def draw_game_card(draw, x, y, game, font_title, font_info, font_small, card_w):
+    """在指定位置绘制单张游戏卡片：上封面 + 下信息。card_w 为卡片总宽。"""
+    inner_w = card_w - PAD
     cover_path = download_image(game["image"])
-    card_h = COVER_H + PAD * 2
-
-    # 卡片背景
-    draw.rectangle([(PAD, y), (canvas_width - PAD, y + card_h)], fill=CARD_BG)
-
-    row_x = PAD + 10
-    row_y = y + 10
 
     # 封面
     if cover_path:
         try:
             cover = PILImage.open(cover_path)
-            cover = cover.resize((COVER_W, COVER_H), LAYOUT_RESAMPLE)
-            # paste 到画布需要合并，这里用简单的 paste
-            # 把 cover 贴在对应位置
-            draw._image.paste(cover, (row_x, row_y))
+            cover = cover.resize((inner_w, COVER_H), LAYOUT_RESAMPLE)
+            draw._image.paste(cover, (x, y))
         except Exception:
-            draw.rectangle([(row_x, row_y), (row_x + COVER_W, row_y + COVER_H)], fill=(50, 50, 60))
-            draw.text((row_x + COVER_W // 2 - 30, row_y + COVER_H // 2), "no cover", fill=TEXT_MUTED, font=font_info)
+            draw.rectangle([(x, y), (x + inner_w, y + COVER_H)], fill=CARD_BG)
+            draw.text((x + inner_w // 2 - 30, y + COVER_H // 2), "no cover", fill=TEXT_MUTED, font=font_info)
     else:
-        draw.rectangle([(row_x, row_y), (row_x + COVER_W, row_y + COVER_H)], fill=(50, 50, 60))
-        draw.text((row_x + COVER_W // 2 - 30, row_y + COVER_H // 2), "no cover", fill=TEXT_MUTED, font=font_info)
+        draw.rectangle([(x, y), (x + inner_w, y + COVER_H)], fill=CARD_BG)
+        draw.text((x + inner_w // 2 - 30, y + COVER_H // 2), "no cover", fill=TEXT_MUTED, font=font_info)
 
     if cover_path and os.path.exists(cover_path):
         os.remove(cover_path)
 
-    # 右侧信息
-    info_x = row_x + COVER_W + 20
-    info_w = canvas_width - info_x - PAD - 10
+    # 信息区域
+    info_y = y + COVER_H + 8
 
-    # 标题（截断）
+    # 标题（单行截断）
     title_text = game["title"]
-    # 简单截断
     bbox = draw.textbbox((0, 0), title_text, font=font_title)
-    while bbox[2] - bbox[0] > info_w and len(title_text) > 3:
+    while bbox[2] - bbox[0] > inner_w and len(title_text) > 3:
         title_text = title_text[:-1]
         bbox = draw.textbbox((0, 0), title_text + "...", font=font_title)
     if title_text != game["title"]:
         title_text += "..."
+    draw.text((x, info_y), title_text, fill=TEXT_PRIMARY, font=font_title)
+    info_y += 32
 
-    draw.text((info_x, row_y + 10), title_text, fill=TEXT_PRIMARY, font=font_title)
+    # FREE 标签 + 原价
+    draw.rectangle([(x, info_y), (x + 48, info_y + 20)], fill=ACCENT_FREE)
+    draw.text((x + 4, info_y + 2), "FREE", fill="white", font=font_small)
+    draw.text((x + 54, info_y), f"原价 {game['price']['original']}", fill=TEXT_MUTED, font=font_small)
+    info_y += 24
 
-    # 原价 -> 免费
-    draw.rectangle([(info_x, row_y + 55), (info_x + 56, row_y + 75)], fill=ACCENT_FREE)
-    draw.text((info_x + 6, row_y + 56), "FREE", fill="white", font=font_small)
-    draw.text((info_x + 66, row_y + 55), f"原价 {game['price']['original']}", fill=TEXT_MUTED, font=font_info)
+    # 截止时间
+    if "free_end" in game:
+        draw.text((x, info_y), f"{game['free_end']} 截止", fill=TEXT_MUTED, font=font_small)
 
-    # 时间
-    if "free_end" in game and "free_start" in game:
-        draw.text((info_x, row_y + 85), f"{game['free_end']} 截止", fill=TEXT_MUTED, font=font_small)
-
-    return y + card_h + 8
+    return info_y + 26
 
 
 def build_image(current, upcoming, font_path):
-    """构建一张完整的合成图片：本周免费 + 即将免费"""
+    """构建完整图片：每行两张卡片"""
     if not current and not upcoming:
         return None
 
     font_title, font_info, font_small = get_fonts(font_path)
 
-    # 计算画布尺寸
-    canvas_w = max(COVER_W + 400, 720)
-    section_padding = PAD * 2 + BAR_H
+    CARD_GAP = 16
+    CARD_W = 380
+    canvas_w = max(PAD * 2 + CARD_W * 2 + CARD_GAP, 800)
+    header_h, footer_h = 50, 40
 
-    rows_height = 0
-    if current:
-        rows_height += section_padding + len(current) * (COVER_H + PAD * 2 + 8)
-    if upcoming:
-        rows_height += section_padding + len(upcoming) * (COVER_H + PAD * 2 + 8)
+    # 估算高度
+    est_h = header_h + footer_h + 20
+    for lst in (current, upcoming):
+        if lst:
+            est_h += BAR_H + ((len(lst) + 1) // 2) * (COVER_H + 120)
 
-    # 标题区 + 底部
-    header_h = 50
-    footer_h = 30
-    canvas_h = header_h + rows_height + footer_h
-
-    canvas = PILImage.new("RGB", (canvas_w, canvas_h), color=DARK_BG)
+    canvas = PILImage.new("RGB", (canvas_w, est_h), color=DARK_BG)
     draw = ImageDraw.Draw(canvas)
 
-    cursor_y = 10
+    cur_y = 10
 
-    # 顶部标题
-    title_text = f"Epic Games 免费游戏  {beijing_time_str('%Y-%m-%d')}"
-    bbox = draw.textbbox((0, 0), title_text, font=font_info)
-    th = bbox[3] - bbox[1]
-    draw.text((PAD, cursor_y + (header_h - th) // 2), title_text, fill=TEXT_MUTED, font=font_info)
-    cursor_y += header_h
+    # 顶部
+    draw.text((PAD, cur_y + 8), "Epic Games 免费游戏", fill=TEXT_PRIMARY, font=font_title)
+    date_str = beijing_time_str("%Y-%m-%d")
+    tw = draw.textbbox((0, 0), date_str, font=font_small)[2]
+    draw.text((canvas_w - PAD - tw, cur_y + 14), date_str, fill=TEXT_MUTED, font=font_small)
+    cur_y += header_h
 
-    # 本周免费
-    if current:
-        cursor_y = draw_section_header(
-            draw, cursor_y, canvas_w,
-            f"本周免费  ({len(current)} 款)", ACCENT_CURRENT, font_title
-        )
-        for g in current:
-            cursor_y = draw_game_row(draw, cursor_y, g, font_title, font_info, font_small, canvas_w)
+    # 绘制各分区
+    for games_list, title, accent in (
+        (current, f"本周免费  {len(current)} 款", ACCENT_CURRENT),
+        (upcoming, f"即将免费  {len(upcoming)} 款", ACCENT_UPCOMING),
+    ):
+        if not games_list:
+            continue
+        cur_y = draw_section_header(draw, cur_y, canvas_w, title, accent, font_title)
+        for i in range(0, len(games_list), 2):
+            row_y = cur_y
+            for j, g in enumerate(games_list[i : i + 2]):
+                card_x = PAD + j * (CARD_W + CARD_GAP)
+                bottom = draw_game_card(draw, card_x, row_y, g, font_title, font_info, font_small, CARD_W)
+                cur_y = max(cur_y, bottom)
 
-    # 即将免费
-    if upcoming:
-        cursor_y = draw_section_header(
-            draw, cursor_y, canvas_w,
-            f"即将免费  ({len(upcoming)} 款)", ACCENT_UPCOMING, font_title
-        )
-        for g in upcoming:
-            cursor_y = draw_game_row(draw, cursor_y, g, font_title, font_info, font_small, canvas_w)
-
-    # 底部
-    draw.text((PAD, canvas_h - 22), "store.epicgames.com/zh-CN/free-games", fill=TEXT_MUTED, font=font_small)
+    # 裁剪到实际高度
+    actual_h = cur_y + footer_h
+    canvas = canvas.crop((0, 0, canvas_w, actual_h))
+    draw = ImageDraw.Draw(canvas)
+    draw.text((PAD, actual_h - 24), "store.epicgames.com/zh-CN/free-games", fill=TEXT_MUTED, font=font_small)
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as f:
         canvas.save(f, quality=92)
