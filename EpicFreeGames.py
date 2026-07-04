@@ -497,18 +497,46 @@ def main():
 
     # 推送
     if img_path and os.path.exists(img_path):
-        # 图片成功 → 仅 Telegram，不发文字
-        from notifier import _send_telegram_photo
+        # 图片成功 → 仅 Telegram
+        from notifier import _get_telegram_kwargs
+        base_url, chat_id, proxies = _get_telegram_kwargs()
         caption = f"Epic Games  {beijing_time_str()}"
-        ok = _send_telegram_photo(caption, img_path)
+        ok = False
+        if base_url and chat_id:
+            try:
+                # 检查文件大小
+                fsize = os.path.getsize(img_path)
+                log_info(f"图片大小: {fsize / 1024:.0f} KB")
+                if fsize > 10 * 1024 * 1024:
+                    log_error("图片超过 Telegram 10MB 限制")
+                else:
+                    with open(img_path, "rb") as f:
+                        photo_data = f.read()
+                    # 根据扩展名设置正确的 MIME
+                    ext = os.path.splitext(img_path)[1].lower()
+                    mime = "image/jpeg" if ext in (".jpg", ".jpeg") else "image/png"
+                    url = f"{base_url}/sendPhoto"
+                    resp = requests.post(
+                        url,
+                        data={"chat_id": chat_id, "caption": caption},
+                        files={"photo": (os.path.basename(img_path), photo_data, mime)},
+                        proxies=proxies, timeout=30,
+                    )
+                    resp_data = resp.json()
+                    ok = resp_data.get("ok", False)
+                    if not ok:
+                        log_error(f"Telegram 返回: {resp_data.get('description', resp.text)}")
+            except Exception as e:
+                log_error(f"图片推送异常: {e}")
+        else:
+            log_warning("Telegram 未配置 (TG_BOT_TOKEN / TG_USER_ID)")
         os.remove(img_path)
         if ok:
             log_success("图片推送完成 (Telegram)")
         else:
-            log_warning("Telegram 图片推送失败，降级为文字")
+            log_warning("图片推送失败，降级为文字")
             notify_send("Epic Games", build_text_report(current, upcoming, discounts))
     else:
-        # 图片失败 → 文字推送全渠道
         log_warning("图片生成失败，使用文字推送")
         notify_send("Epic Games", build_text_report(current, upcoming, discounts))
 
