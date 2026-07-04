@@ -500,7 +500,27 @@ def main():
         # 图片成功 → 仅 Telegram
         from notifier import _get_telegram_kwargs
         base_url, chat_id, proxies = _get_telegram_kwargs()
-        caption = f"Epic Games  {beijing_time_str()}"
+        # 构建图片描述（仿 ValorantStore 格式）
+        caption_lines = [f"Epic Games 每周免费游戏"]
+        if current:
+            caption_lines.append("")
+            caption_lines.append(f"本周免费 ({len(current)} 款):")
+            for i, g in enumerate(current, 1):
+                caption_lines.append(f"{i}. {g['title']}  (原价 {g['price']['original']})  {g.get('free_end', '')} 截止")
+        if upcoming:
+            caption_lines.append("")
+            caption_lines.append(f"即将免费 ({len(upcoming)} 款):")
+            for i, g in enumerate(upcoming, 1):
+                caption_lines.append(f"{i}. {g['title']}  (原价 {g['price']['original']})  {g.get('free_start', '')} 起")
+        if discounts:
+            caption_lines.append("")
+            caption_lines.append(f"折扣活动 ({len(discounts)} 款):")
+            for i, g in enumerate(discounts, 1):
+                caption_lines.append(f"{i}. {g['title']}  -{g['discount_pct']}%  {g['price']['original']} -> {g['discounted_str']}  {g.get('free_end', '')} 截止")
+        caption_lines.append("")
+        caption_lines.append("─" * 18)
+        caption_lines.append(f"执行时间: {beijing_time_str()}")
+        caption = "\n".join(caption_lines)
         ok = False
         if base_url and chat_id:
             try:
