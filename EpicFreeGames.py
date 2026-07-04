@@ -33,7 +33,7 @@ FONT_FILE = CONFIG_DIR / "font.ttf"
 _TZ_BJ = timezone(timedelta(hours=8))
 
 # 设计参数
-COVER_W, COVER_H = 320, 450
+COVER_W, COVER_H = 280, 380
 PAD = 24
 BAR_H = 56
 ROW_INFO_H = 90
@@ -390,7 +390,7 @@ def build_image(current, upcoming, discounts, font_path):
     font_title, font_info, font_small = get_fonts(font_path)
 
     CARD_GAP = 16
-    CARD_W = 380
+    CARD_W = 340
     canvas_w = max(PAD * 2 + CARD_W * 2 + CARD_GAP, 800)
     header_h, footer_h = 50, 40
 
@@ -398,7 +398,7 @@ def build_image(current, upcoming, discounts, font_path):
     est_h = header_h + footer_h + 20
     for lst in (current, upcoming, discounts):
         if lst:
-            est_h += BAR_H + ((len(lst) + 1) // 2) * (COVER_H + 120)
+            est_h += BAR_H + ((len(lst) + 1) // 2) * (COVER_H + 100)
 
     canvas = PILImage.new("RGB", (canvas_w, est_h), color=DARK_BG)
     draw = ImageDraw.Draw(canvas)
@@ -435,7 +435,7 @@ def build_image(current, upcoming, discounts, font_path):
     draw.text((PAD, actual_h - 24), "store.epicgames.com/zh-CN/free-games", fill=TEXT_MUTED, font=font_small)
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as f:
-        canvas.save(f, quality=92)
+        canvas.save(f, quality=75)
         return f.name
 
 
@@ -520,7 +520,7 @@ def main():
                         url,
                         data={"chat_id": chat_id, "caption": caption},
                         files={"photo": (os.path.basename(img_path), photo_data, mime)},
-                        proxies=proxies, timeout=30,
+                        proxies=proxies, timeout=60,
                     )
                     resp_data = resp.json()
                     ok = resp_data.get("ok", False)
