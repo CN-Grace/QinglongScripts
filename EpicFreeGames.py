@@ -441,32 +441,21 @@ def build_image(current, upcoming, discounts, font_path):
 
 # ---------- 文字报告（降级用）----------
 def build_text_report(current, upcoming, discounts):
-    lines = ["Epic Games 每周免费游戏", "", "─" * 18, ""]
-    idx = 1
+    lines = [f"Epic Games  {beijing_time_str()}", ""]
     if current:
-        lines.append(f"🆓 本周免费 ({len(current)} 款)")
+        lines.append(f"[ 本周免费 {len(current)} 款 ]")
         for g in current:
-            lines.append(f"{idx}. {g['title']}")
-            lines.append(f"   原价 {g['price']['original']} -> 免费 | {g.get('free_end', '')} 截止")
-            idx += 1
-        lines.append("")
+            lines.append(f"  {g['title']}  (原价 {g['price']['original']})  {g.get('free_end', '')} 截止")
     if upcoming:
-        lines.append(f"⏳ 即将免费 ({len(upcoming)} 款)")
+        lines.append(f"[ 即将免费 {len(upcoming)} 款 ]")
         for g in upcoming:
-            lines.append(f"{idx}. {g['title']}")
-            lines.append(f"   原价 {g['price']['original']} -> 免费 | {g.get('free_start', '')} 起")
-            idx += 1
-        lines.append("")
+            lines.append(f"  {g['title']}  (原价 {g['price']['original']})  {g.get('free_start', '')} 起")
     if discounts:
-        lines.append(f"🏷️ 折扣活动 ({len(discounts)} 款)")
+        lines.append(f"[ 折扣活动 {len(discounts)} 款 ]")
         for g in discounts:
-            lines.append(f"{idx}. {g['title']}")
-            lines.append(f"   -{g['discount_pct']}%  {g['price']['original']} -> {g['discounted_str']} | {g.get('free_end', '')} 截止")
-            idx += 1
-        lines.append("")
-    lines.append("─" * 18)
-    lines.append(f"领取: store.epicgames.com/zh-CN/free-games")
-    lines.append(f"执行时间: {beijing_time_str()}")
+            lines.append(f"  {g['title']}  -{g['discount_pct']}%  {g['price']['original']} -> {g['discounted_str']}  {g.get('free_end', '')} 截止")
+    lines.append("")
+    lines.append("store.epicgames.com/zh-CN/free-games")
     return "\n".join(lines)
 
 
