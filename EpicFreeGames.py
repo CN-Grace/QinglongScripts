@@ -429,10 +429,8 @@ def build_image(current, upcoming, discounts, font_path):
                 cur_y = max(cur_y, bottom)
 
     # 裁剪到实际高度
-    actual_h = cur_y + footer_h
+    actual_h = cur_y + 12
     canvas = canvas.crop((0, 0, canvas_w, actual_h))
-    draw = ImageDraw.Draw(canvas)
-    draw.text((PAD, actual_h - 24), "store.epicgames.com/zh-CN/free-games", fill=TEXT_MUTED, font=font_small)
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as f:
         canvas.save(f, quality=75)
@@ -500,16 +498,8 @@ def main():
         # 图片成功 → 仅 Telegram
         from notifier import _get_telegram_kwargs
         base_url, chat_id, proxies = _get_telegram_kwargs()
-        # 图片描述：简洁，详情在图片里
-        parts = []
-        if current:
-            parts.append(f"本周免费: {len(current)} 款")
-        if upcoming:
-            parts.append(f"即将免费: {len(upcoming)} 款")
-        if discounts:
-            parts.append(f"折扣活动: {len(discounts)} 款")
-        summary = " | ".join(parts) if parts else ""
-        caption = f"Epic Games 每周免费游戏\n\n{summary}\n\n{'─' * 18}\n执行时间: {beijing_time_str()}"
+        # 图片描述：简洁带 emoji，详情在图片里
+        caption = f"🎮 Epic Games 每周免费游戏\n\n🆓 {len(current)} 款 | ⏳ {len(upcoming)} 款 | 🏷️ {len(discounts)} 款\n\n{'─' * 18}\n🕒 {beijing_time_str()}"
         ok = False
         if base_url and chat_id:
             try:
