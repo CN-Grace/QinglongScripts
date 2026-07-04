@@ -86,9 +86,13 @@ def space_arc_search(session, uid, pn=1, ps=30, tid=0, order="pubdate", keyword=
     """获取指定 up 主的视频投稿"""
     params = {"mid": uid, "pn": pn, "Ps": ps, "tid": tid, "order": order, "keyword": keyword}
     ret = session.get(url="https://api.bilibili.com/x/space/arc/search", params=params).json()
+    data = ret.get("data")
+    if not isinstance(data, dict):
+        return [], 0
+    vlist = data.get("list", {}).get("vlist", [])
     data_list = [
         {"aid": one.get("aid"), "cid": 0, "title": one.get("title"), "owner": one.get("author")}
-        for one in ret.get("data", {}).get("list", {}).get("vlist", [])[:2]
+        for one in vlist[:2]
     ]
     return data_list, 2
 
@@ -107,10 +111,43 @@ def live_status(session):
 
 
 def get_region(session, rid=1, num=6):
-    """获取分区视频列表"""
-    url = f"https://api.bilibili.com/x/web-interface/dynamic/region?ps={num}&rid={rid}"
-    ret = session.get(url=url).json()
-    return [{"aid": one.get("aid"), "cid": one.get("cid"), "title": one.get("title"), "owner": one.get("owner", {}).get("name")} for one in ret.get("data", {}).get("archives", [])]
+    """获取分区视频列表（dynamic/region 已废弃，使用 popular API 作为主源，ranking 作为备选）"""
+    # 主 API：热门视频
+    url = f"https://api.bilibili.com/x/web-interface/popular?pn=1&ps={num}"
+    try:
+        ret = session.get(url=url).json()
+        data = ret.get("data")
+        if isinstance(data, dict):
+            video_list = data.get("list", [])
+            if video_list:
+                return [
+                    {"aid": one.get("aid"), "cid": one.get("cid"), "title": one.get("title"),
+                     "owner": one.get("owner", {}).get("name")}
+                    for one in video_list
+                ]
+    except Exception:
+        pass
+
+    # 备选 API：排行榜
+    try:
+        ret = session.get(
+            url="https://api.bilibili.com/x/web-interface/ranking/v2",
+            params={"rid": rid, "type": "all"}
+        ).json()
+        data = ret.get("data")
+        if isinstance(data, dict):
+            video_list = data.get("list", [])
+            if video_list:
+                return [
+                    {"aid": one.get("aid"), "cid": one.get("cid"), "title": one.get("title"),
+                     "owner": one.get("owner", {}).get("name")}
+                    for one in video_list
+                ]
+    except Exception:
+        pass
+
+    log_warning("无法获取视频列表，所有 API 均失败")
+    return []
 
 
 def silver2coin(session, bili_jct):
@@ -163,7 +200,10 @@ def main():
     if COIN_TYPE == 1:
         following_list = get_followings(session=session, uid=uid)
         count = 0
-        for following in following_list.get("data", {}).get("list", []):
+        data = following_list.get("data")
+        if not isinstance(data, dict):
+            data = {}
+        for following in data.get("list", []):
             mid = following.get("mid")
             if mid:
                 tmplist, tmpcount = space_arc_search(session=session, uid=mid)

@@ -33,6 +33,40 @@ from notifier import send as notify_send
 TOKENS = os.environ.get("SKYLAND_TOKEN", "").split(",")
 APP_CODE = "4ca99fa6b56cc2ba"
 
+# ==================== 时间偏移量（修正容器时间漂移） ====================
+_TIME_OFFSET = 0.0  # 本地时间 + offset = 服务器时间
+
+
+def _sync_time_offset():
+    """通过 HTTPS 响应头 Date 计算本地与服务器的时间偏移"""
+    global _TIME_OFFSET
+    import email.utils as email_utils
+    from datetime import datetime, timezone
+    try:
+        resp = requests.head("https://zonai.skland.com/", timeout=5)
+        date_str = resp.headers.get("Date", "")
+        if date_str:
+            server_time_tuple = email_utils.parsedate(date_str)
+            if server_time_tuple:
+                server_ts = datetime(*server_time_tuple[:6], tzinfo=timezone.utc).timestamp()
+                local_ts = time.time()
+                _TIME_OFFSET = server_ts - local_ts
+                log_info(f"时间同步完成: 偏移 {_TIME_OFFSET:+.1f}s (本地{local_ts:.0f} → 服务器{server_ts:.0f})")
+                return
+    except Exception as e:
+        log_warning(f"时间同步失败，使用本地时间: {e}")
+    _TIME_OFFSET = 0.0
+
+
+def real_time() -> float:
+    """返回修正后的 Unix 时间戳"""
+    return time.time() + _TIME_OFFSET
+
+
+def real_localtime():
+    """返回修正后的本地时间 struct_time"""
+    return time.localtime(real_time())
+
 # ==================== 数美加密常量 ====================
 SM_CONFIG = {
     "organization": "UWXspnCCJN4sfYlNfqps",
@@ -134,7 +168,7 @@ def _get_tn(obj: dict) -> str:
 
 
 def _get_smid() -> str:
-    t = time.localtime()
+    t = real_localtime()
     time_str = f"{t.tm_year}{t.tm_mon:02d}{t.tm_mday:02d}{t.tm_hour:02d}{t.tm_min:02d}{t.tm_sec:02d}"
     uid = str(uuid.uuid4())
     md5_uid = hashlib.md5(uid.encode()).hexdigest()
@@ -184,7 +218,7 @@ def get_device_id() -> str:
 
 # ==================== 签到相关函数 ====================
 def generate_signature(path: str, body_or_query: str, token: str, d_id: str) -> tuple:
-    timestamp = str(int(time.time()) - 2)
+    timestamp = str(int(real_time()) - 2)
     header_ca = {"platform": "3", "timestamp": timestamp, "dId": d_id, "vName": "1.0.0"}
     header_str = json.dumps(header_ca, separators=(",", ":"))
     raw_string = path + body_or_query + timestamp + header_str
@@ -402,6 +436,8 @@ def main():
     if not TOKENS or TOKENS == [""]:
         log_error("未设置 SKYLAND_TOKEN 环境变量，请设置后运行")
         return
+
+    _sync_time_offset()
 
     try:
         d_id = get_device_id()
