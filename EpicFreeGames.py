@@ -44,6 +44,7 @@ TEXT_PRIMARY = (255, 255, 255)
 TEXT_MUTED = (150, 150, 158)
 ACCENT_CURRENT = (70, 130, 220)
 ACCENT_UPCOMING = (220, 160, 60)
+ACCENT_DISCOUNT = (180, 80, 180)
 ACCENT_FREE = (80, 200, 120)
 
 
@@ -143,6 +144,77 @@ def extract_free_dates(promotional_offers):
                 dates.append((bj_time(start), bj_time(end)))
     dates.sort(key=lambda x: x[1])
     return dates
+
+
+def parse_discounts(data, free_titles):
+    """
+    解析打折促销游戏（discountPercentage > 0 且在 promotionalOffers 或 upcomingPromotionalOffers 中）。
+    free_titles: 已出现在免费列表中的标题集合，避免重复。
+    返回 list of dict，每个包含 discount_pct 和价格。
+    """
+    if not data:
+        return []
+
+    elements = (
+        data.get("data", {}).get("Catalog", {})
+        .get("searchStore", {}).get("elements", [])
+    )
+
+    discounts = []
+    seen = set(free_titles)
+
+    for elem in elements:
+        if elem.get("offerType") != "BASE_GAME" or elem.get("status") != "ACTIVE":
+            continue
+
+        title = elem.get("title", "Unknown")
+        if title in seen:
+            continue
+
+        price_info = elem.get("price", {}).get("totalPrice", {})
+        price = extract_price(elem)
+
+        promotions = elem.get("promotions")
+        if not promotions:
+            continue
+
+        best = None  # (discount_pct, start, end)
+
+        # 查找 promotionalOffers + upcomingPromotionalOffers 中最大折扣
+        for section in ("promotionalOffers", "upcomingPromotionalOffers"):
+            for block in promotions.get(section, []):
+                for offer in block.get("promotionalOffers", []):
+                    pct = parse_discount_percentage(offer.get("discountSetting", ""))
+                    if pct and pct > 0:
+                        start = offer.get("startDate", "")
+                        end = offer.get("endDate", "")
+                        if start and end:
+                            if best is None or pct > best[0]:
+                                best = (pct, start, end)
+
+        if best:
+            pct, start, end = best
+            url_slug = elem.get("urlSlug") or elem.get("productSlug", "").replace("/home", "")
+            store_url = f"https://store.epicgames.com/zh-CN/p/{url_slug}" if url_slug else ""
+            # 计算折后价
+            original = price_info.get("originalPrice", 0)
+            discounted = round(original * (100 - pct) / 100)
+
+            discounts.append({
+                "title": title,
+                "url": store_url,
+                "image": find_image(elem.get("keyImages", [])),
+                "price": price,
+                "discount_pct": pct,
+                "discounted_price": discounted,
+                "free_start": bj_time(start),
+                "free_end": bj_time(end),
+            })
+            seen.add(title)
+
+    # 按折扣从大到小排序
+    discounts.sort(key=lambda g: -g["discount_pct"])
+    return discounts
 
 
 def parse_free_games(data):
@@ -277,25 +349,41 @@ def draw_game_card(draw, x, y, game, font_title, font_info, font_small, card_w):
         draw.text((x, info_y), line2, fill=TEXT_PRIMARY, font=font_title)
         info_y += title_h + 4
 
-    # FREE 标签 + 原价
-    free_w = 56
-    free_h = 26
-    draw.rectangle([(x, info_y), (x + free_w, info_y + free_h)], fill=ACCENT_FREE)
-    draw.text((x + 6, info_y + 2), "FREE", fill="white", font=font_info)
-    draw.text((x + free_w + 6, info_y), f"原价 {game['price']['original']}", fill=TEXT_MUTED, font=font_info)
-    info_y += free_h + 6
+    # 标签 + 价格
+    discount_pct = game.get("discount_pct", 0)
+    if discount_pct:
+        # 折扣标签
+        tag_text = f"-{discount_pct}%"
+        bbox = draw.textbbox((0, 0), tag_text, font=font_info)
+        tag_w = bbox[2] - bbox[0] + 12
+        tag_h = 26
+        draw.rectangle([(x, info_y), (x + tag_w, info_y + tag_h)], fill=ACCENT_DISCOUNT)
+        draw.text((x + 6, info_y + 2), tag_text, fill="white", font=font_info)
+        # 原价 → 折后价
+        draw.text((x + tag_w + 6, info_y),
+                  f"原价 {game['price']['original']}  {game['discounted_price']}元",
+                  fill=TEXT_MUTED, font=font_info)
+    else:
+        # FREE 标签
+        free_w = 56
+        free_h = 26
+        draw.rectangle([(x, info_y), (x + free_w, info_y + free_h)], fill=ACCENT_FREE)
+        draw.text((x + 6, info_y + 2), "FREE", fill="white", font=font_info)
+        draw.text((x + free_w + 6, info_y), f"原价 {game['price']['original']}", fill=TEXT_MUTED, font=font_info)
+    info_y += 32
 
     # 截止时间
     if "free_end" in game:
-        draw.text((x, info_y), f"{game['free_end']} 截止", fill=TEXT_MUTED, font=font_info)
+        label = "截止" if not discount_pct else "活动截止"
+        draw.text((x, info_y), f"{game['free_end']} {label}", fill=TEXT_MUTED, font=font_info)
         info_y += 28
 
     return info_y + 16
 
 
-def build_image(current, upcoming, font_path):
+def build_image(current, upcoming, discounts, font_path):
     """构建完整图片：每行两张卡片"""
-    if not current and not upcoming:
+    if not current and not upcoming and not discounts:
         return None
 
     font_title, font_info, font_small = get_fonts(font_path)
@@ -307,7 +395,7 @@ def build_image(current, upcoming, font_path):
 
     # 估算高度
     est_h = header_h + footer_h + 20
-    for lst in (current, upcoming):
+    for lst in (current, upcoming, discounts):
         if lst:
             est_h += BAR_H + ((len(lst) + 1) // 2) * (COVER_H + 120)
 
@@ -327,6 +415,7 @@ def build_image(current, upcoming, font_path):
     for games_list, title, accent in (
         (current, f"本周免费  {len(current)} 款", ACCENT_CURRENT),
         (upcoming, f"即将免费  {len(upcoming)} 款", ACCENT_UPCOMING),
+        (discounts, f"折扣活动  {len(discounts)} 款", ACCENT_DISCOUNT),
     ):
         if not games_list:
             continue
@@ -350,8 +439,8 @@ def build_image(current, upcoming, font_path):
 
 
 # ---------- 文字报告（降级用）----------
-def build_text_report(current, upcoming):
-    lines = [f"Epic 免费游戏  {beijing_time_str()}", ""]
+def build_text_report(current, upcoming, discounts):
+    lines = [f"Epic Games  {beijing_time_str()}", ""]
     if current:
         lines.append(f"[ 本周免费 {len(current)} 款 ]")
         for g in current:
@@ -360,6 +449,10 @@ def build_text_report(current, upcoming):
         lines.append(f"[ 即将免费 {len(upcoming)} 款 ]")
         for g in upcoming:
             lines.append(f"  {g['title']}  (原价 {g['price']['original']})  {g.get('free_start', '')} 起")
+    if discounts:
+        lines.append(f"[ 折扣活动 {len(discounts)} 款 ]")
+        for g in discounts:
+            lines.append(f"  {g['title']}  -{g['discount_pct']}%  {g['price']['original']} -> {g['discounted_price']}元  {g.get('free_end', '')} 截止")
     lines.append("")
     lines.append("store.epicgames.com/zh-CN/free-games")
     return "\n".join(lines)
@@ -377,15 +470,19 @@ def main():
 
     # 解析
     current, upcoming = parse_free_games(data)
-    log_success(f"本周 {len(current)} 款, 即将 {len(upcoming)} 款")
+    free_titles = {g["title"] for g in current} | {g["title"] for g in upcoming}
+    discounts = parse_discounts(data, free_titles)
+    log_success(f"本周 {len(current)} 款, 即将 {len(upcoming)} 款, 折扣 {len(discounts)} 款")
 
     for g in current:
         log_success(f"[本周] {g['title']} 截止 {g['free_end']}")
     for g in upcoming:
         log_info(f"[即将] {g['title']}  {g['free_start']} ~ {g['free_end']}")
+    for g in discounts:
+        log_info(f"[折扣] {g['title']}  -{g['discount_pct']}%  {g['free_end']} 截止")
 
-    if not current and not upcoming:
-        log_warning("无免费游戏")
+    if not current and not upcoming and not discounts:
+        log_warning("无免费游戏或折扣")
         return
 
     # 尝试生成图片
@@ -393,7 +490,7 @@ def main():
     font_path = ensure_font()
     if font_path:
         try:
-            img_path = build_image(current, upcoming, font_path)
+            img_path = build_image(current, upcoming, discounts, font_path)
         except Exception as e:
             log_error(f"图片生成异常: {e}")
 
@@ -401,18 +498,18 @@ def main():
     if img_path and os.path.exists(img_path):
         # 图片成功 → 仅 Telegram，不发文字
         from notifier import _send_telegram_photo
-        caption = f"Epic Games 免费游戏  {beijing_time_str()}"
+        caption = f"Epic Games  {beijing_time_str()}"
         ok = _send_telegram_photo(caption, img_path)
         os.remove(img_path)
         if ok:
             log_success("图片推送完成 (Telegram)")
         else:
             log_warning("Telegram 图片推送失败，降级为文字")
-            notify_send("Epic 免费游戏", build_text_report(current, upcoming))
+            notify_send("Epic Games", build_text_report(current, upcoming, discounts))
     else:
         # 图片失败 → 文字推送全渠道
         log_warning("图片生成失败，使用文字推送")
-        notify_send("Epic 免费游戏", build_text_report(current, upcoming))
+        notify_send("Epic Games", build_text_report(current, upcoming, discounts))
 
     log_info("===== 任务完成 =====")
 
