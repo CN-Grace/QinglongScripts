@@ -10,12 +10,14 @@ import os
 import json
 import requests
 import tempfile
+from io import BytesIO
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
-from PIL import Image as PILImage, ImageDraw, ImageFont
+from concurrent.futures import ThreadPoolExecutor
+from PIL import Image as PILImage, ImageDraw, ImageFont, ImageOps
 
 from utils import log_info, log_success, log_warning, log_error, beijing_time_str
-from notifier import send as notify_send, send_photos as notify_send_photos
+from notifier import send as notify_send, send_photos as notify_send_photos, _send_telegram_photo
 
 # ==================== 用户配置 ====================
 VALORANT_COOKIE = os.environ.get("VALORANT_COOKIE", "")
@@ -244,18 +246,85 @@ def build_report(items: list, nickname: str, end_ts: int) -> str:
     return "\n".join(lines)
 
 
-def download_image(url: str, timeout: int = 10) -> str:
-    """下载图片到临时文件，返回文件路径"""
+# ==================== 图片生成配置 ====================
+CARD_W = 720
+HEADER_H = 140
+GAP = 16
+BG_COLOR = (20, 20, 24)
+GOODS_WIDTH_RATIO = 0.78
+GOODS_PADDING = 40
+BG_TEXT_RATIO = 0.18
+
+
+def _download_image_pil(url: str, timeout: int = 10):
+    """下载图片并返回 PIL Image 对象，失败返回 None"""
+    if not url:
+        return None
     try:
         resp = requests.get(url, timeout=timeout)
         resp.raise_for_status()
-        suffix = ".png" if "png" in resp.headers.get("content-type", "") else ".jpg"
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as f:
-            f.write(resp.content)
-            return f.name
+        img = PILImage.open(BytesIO(resp.content))
+        img = ImageOps.exif_transpose(img)
+        return img
     except Exception as e:
         log_error(f"下载图片失败: {e}")
         return None
+
+
+def _contain_resize(img, target_w: int, target_h: int):
+    """等比缩放使整图完整放入目标尺寸，不裁切，返回 (缩放图, 居中x, 居中y)"""
+    scale = min(target_w / img.width, target_h / img.height)
+    new_w = int(img.width * scale)
+    new_h = int(img.height * scale)
+    img_resized = img.resize((new_w, new_h), PILImage.LANCZOS)
+    x = (target_w - new_w) // 2
+    y = (target_h - new_h) // 2
+    return img_resized, x, y
+
+
+def _draw_text_with_outline(draw, position, text, font, fill, outline=(0, 0, 0, 255), offset: int = 2):
+    """绘制带描边的文字（8 方向偏移）"""
+    x, y = position
+    for dx in (-offset, 0, offset):
+        for dy in (-offset, 0, offset):
+            if dx == 0 and dy == 0:
+                continue
+            draw.text((x + dx, y + dy), text, fill=outline, font=font)
+    draw.text((x, y), text, fill=fill, font=font)
+
+
+def _fit_font(text: str, font_path: str, base_size: int, max_width: int, min_size: int = 16):
+    """根据最大宽度动态缩放字号，返回合适字体"""
+    size = base_size
+    while size > min_size:
+        try:
+            font = ImageFont.truetype(font_path, size)
+        except IOError:
+            return ImageFont.load_default()
+        bbox = font.getbbox(text)
+        if bbox[2] - bbox[0] <= max_width:
+            return font
+        size -= 2
+    try:
+        return ImageFont.truetype(font_path, min_size)
+    except IOError:
+        return ImageFont.load_default()
+
+
+def _load_fonts(font_path: str) -> dict:
+    """一次性加载所有字体"""
+    def make(size):
+        try:
+            return ImageFont.truetype(font_path, size)
+        except IOError:
+            return ImageFont.load_default()
+    return {
+        "font_path": font_path,
+        "title": make(40),
+        "subtitle": make(28),
+        "card_name": make(36),
+        "price": make(34),
+    }
 
 
 FONT_URL = "https://github.com/anthonyfok/fonts-wqy-microhei/raw/master/wqy-microhei.ttc"
@@ -280,127 +349,146 @@ def ensure_font() -> str:
         return None
 
 
-def build_shop_image(items: list) -> str:
-    """构建商店图片，返回图片文件路径"""
-    processed_images = []
+def _render_card(item: dict, bg_img, goods_img, fonts: dict):
+    """渲染单张商品卡片，返回 RGBA Image。利用背景自带底部文字条，不加额外 footer"""
+    name = item.get("goods_name", "未知")
+    price = item.get("rmb_price", "0")
 
-    # 确保字体存在
+    # 卡片高度由背景图决定（宽度 CARD_W，高度按背景原始比例），无额外 footer
+    if bg_img is not None:
+        bg = bg_img.convert("RGBA")
+        bg_h = int(CARD_W * bg.height / bg.width)
+        bg_resized = bg.resize((CARD_W, bg_h), PILImage.LANCZOS)
+    else:
+        bg_h = 400
+        bg_resized = None
+
+    card = PILImage.new("RGBA", (CARD_W, bg_h), BG_COLOR + (255,))
+
+    # 背景图（铺满整卡）
+    if bg_resized is not None:
+        card.alpha_composite(bg_resized, (0, 0))
+
+    # 背景底部自带文字条区域
+    text_strip_h = int(bg_h * BG_TEXT_RATIO)
+    text_strip_top = bg_h - text_strip_h
+
+    # 商品图（contain 模式，限制在文字条上方区域，留 PADDING 不顶住背景边和文字条）
+    if goods_img is not None:
+        goods = goods_img.convert("RGBA")
+        max_w = int(CARD_W * GOODS_WIDTH_RATIO)
+        max_h = max(text_strip_top - 2 * GOODS_PADDING, 1)
+        goods_resized, _, _ = _contain_resize(goods, max_w, max_h)
+        x = (CARD_W - goods_resized.width) // 2
+        y = (text_strip_top - goods_resized.height) // 2
+        card.alpha_composite(goods_resized, (x, y))
+
+    # 缺图兜底：底部文字条加半透明黑条保证文字可读
+    if bg_resized is None:
+        fallback_bar = PILImage.new("RGBA", (CARD_W, text_strip_h), (0, 0, 0, 175))
+        card.alpha_composite(fallback_bar, (0, text_strip_top))
+
+    draw = ImageDraw.Draw(card)
+
+    # 文字颜色：有背景用深色（背景文字条偏白），无背景用浅色
+    if bg_resized is not None:
+        name_color = (40, 40, 50, 255)
+        price_color = (120, 80, 10, 255)
+        outline_color = (255, 255, 255, 200)
+    else:
+        name_color = (255, 255, 255, 255)
+        price_color = (255, 215, 0, 255)
+        outline_color = (0, 0, 0, 255)
+
+    # 价格（右下，文字条内）
+    price_text = f"{price} 点券"
+    price_font = fonts["price"]
+    pbbox = draw.textbbox((0, 0), price_text, font=price_font)
+    pw = pbbox[2] - pbbox[0]
+    ph = pbbox[3] - pbbox[1]
+    px = CARD_W - pw - 28
+    py = text_strip_top + (text_strip_h - ph) // 2
+    _draw_text_with_outline(draw, (px, py), price_text, price_font, price_color, outline=outline_color)
+
+    # 名称（左下，动态缩放避免与价格重叠）
+    name_max_w = px - 28 - 28
+    name_font = _fit_font(name, fonts["font_path"], 36, name_max_w)
+    nbbox = draw.textbbox((0, 0), name, font=name_font)
+    nh = nbbox[3] - nbbox[1]
+    ny = text_strip_top + (text_strip_h - nh) // 2
+    _draw_text_with_outline(draw, (28, ny), name, name_font, name_color, outline=outline_color)
+
+    return card
+
+
+def _render_header(nickname: str, fonts: dict):
+    """渲染标题头，返回 RGBA Image"""
+    header = PILImage.new("RGBA", (CARD_W, HEADER_H), BG_COLOR + (255,))
+    draw = ImageDraw.Draw(header)
+
+    _draw_text_with_outline(draw, (28, 20), "掌瓦每日商店", fonts["title"], (255, 255, 255, 255))
+    _draw_text_with_outline(draw, (28, 78), f"账号: {nickname}", fonts["subtitle"], (200, 200, 200, 255))
+
+    return header
+
+
+def build_shop_image(items: list, nickname: str, end_ts: int) -> str:
+    """构建商店长图，返回 PNG 文件路径"""
     font_path = ensure_font()
     if not font_path:
         log_error("无法获取字体，跳过图片生成")
         return None
+    fonts = _load_fonts(font_path)
 
-    for i, item in enumerate(items):
-        name = item.get("goods_name", "未知")
-        price = item.get("rmb_price", "0")
-        quality = item.get("quality", "")
-        bg_url = item.get("bg_image", "")
-        goods_url = item.get("goods_pic", "")
+    # 并行下载所有图片（bg + goods 交替入队）
+    urls = []
+    for item in items:
+        urls.append(item.get("bg_image", ""))
+        urls.append(item.get("goods_pic", ""))
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        downloaded = list(ex.map(_download_image_pil, urls))
 
-        if not bg_url or not goods_url:
-            log_warning(f"商品 {name} 缺少图片URL，跳过")
-            continue
+    # 配对为 (bg, goods)
+    item_imgs = [(downloaded[i * 2], downloaded[i * 2 + 1]) for i in range(len(items))]
 
-        # 下载图片
-        bg_path = download_image(bg_url)
-        goods_path = download_image(goods_url)
-
-        if not bg_path or not goods_path:
-            log_warning(f"商品 {name} 图片下载失败，跳过")
-            continue
-
+    # 渲染卡片（缺图时用纯色兜底，保证 4 格完整）
+    cards = []
+    for idx, (item, (bg, goods)) in enumerate(zip(items, item_imgs)):
         try:
-            # 打开图片
-            bg_img = PILImage.open(bg_path)
-            goods_img = PILImage.open(goods_path)
-
-            # 调整商品图尺寸（宽度 = 背景图宽度 - 20px）
-            target_width = bg_img.width - 20
-            height = int((goods_img.height * target_width) / goods_img.width)
-            goods_resized = goods_img.resize((target_width, height))
-
-            # 计算居中粘贴位置
-            x = (bg_img.width - goods_resized.width) // 2
-            y = (bg_img.height - goods_resized.height) // 2
-
-            # 创建新图像
-            new_img = PILImage.new('RGB', bg_img.size)
-            new_img.paste(bg_img, (0, 0))
-
-            # 粘贴商品图（支持透明通道）
-            if goods_resized.mode in ('RGBA', 'LA'):
-                new_img.paste(goods_resized, (x, y), mask=goods_resized)
-            else:
-                new_img.paste(goods_resized, (x, y))
-
-            # 绘制文字
-            draw = ImageDraw.Draw(new_img)
-
-            # 加载字体
-            try:
-                font = ImageFont.truetype(font_path, 36) if font_path else ImageFont.load_default()
-            except IOError:
-                font = ImageFont.load_default()
-
-            # 商品名称
-            text_position = (36, new_img.height - 50)
-            text_color = (255, 255, 255)  # 白色
-            draw.text(text_position, name, fill=text_color, font=font)
-
-            # 商品价格
-            price_text = f"{price} 点券"
-            price_bbox = draw.textbbox((0, 0), price_text, font=font)
-            price_width = price_bbox[2] - price_bbox[0]
-            price_position = (new_img.width - price_width - 36, new_img.height - 50)
-            draw.text(price_position, price_text, fill=text_color, font=font)
-
-            # 保存处理后的图片
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as f:
-                new_img.save(f)
-                processed_images.append(f.name)
-
-            log_info(f"商品 {name} 图片处理完成")
-
+            card = _render_card(item, bg, goods, fonts)
         except Exception as e:
-            log_error(f"商品 {name} 图片处理失败: {e}")
-        finally:
-            # 清理临时文件
-            for path in [bg_path, goods_path]:
-                if path and os.path.exists(path):
-                    os.remove(path)
+            log_error(f"商品 {item.get('goods_name', '未知')} 卡片渲染失败: {e}")
+            card = _render_card(item, None, None, fonts)
+        cards.append(card)
+        log_info(f"商品 {item.get('goods_name', '未知')} 卡片处理完成")
 
-    if not processed_images:
-        log_error("没有商品图片处理成功")
+    if not cards:
+        log_error("没有商品卡片渲染成功")
         return None
 
-    # 合并所有图片
-    images = [PILImage.open(img_path) for img_path in processed_images]
+    # 标题头
+    header = _render_header(nickname, fonts)
 
-    # 计算合并后图片尺寸
-    max_width = max(img.width for img in images)
-    total_height = sum(img.height for img in images) + (len(images) - 1) * 20  # 20px 间距
+    # 垂直拼接（标题头 + 卡片，间隙用深色填充）
+    sections = [header] + cards
+    total_h = sum(s.height for s in sections) + (len(sections) - 1) * GAP
+    merged = PILImage.new("RGB", (CARD_W, total_h), BG_COLOR)
 
-    # 创建合并后的图片
-    merged_image = PILImage.new('RGB', (max_width, total_height), color='white')
+    y = 0
+    for s in sections:
+        merged.paste(s.convert("RGB"), (0, y))
+        y += s.height + GAP
 
-    # 将所有图片垂直拼接
-    y_offset = 0
-    for img in images:
-        merged_image.paste(img, (0, y_offset))
-        y_offset += img.height + 20
-
-    # 保存合并后的图片
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as f:
-        merged_image.save(f)
-        merged_image_path = f.name
-
-    # 清理临时文件
-    for path in processed_images:
-        if os.path.exists(path):
-            os.remove(path)
-
-    log_info(f"商店图片生成完成: {merged_image_path}")
-    return merged_image_path
+    # 保存为 PNG
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as f:
+            merged.save(f, format="PNG")
+            merged_path = f.name
+        log_info(f"商店图片生成完成: {merged_path}")
+        return merged_path
+    except Exception as e:
+        log_error(f"商店图片保存失败: {e}")
+        return None
 
 
 def main():
@@ -446,20 +534,17 @@ def main():
         return
 
     # 构建商店图片
-    shop_image_path = build_shop_image(items)
+    shop_image_path = build_shop_image(items, nickname, end_ts)
 
     if shop_image_path:
-        # 构建图片描述
         end_time = datetime.fromtimestamp(end_ts, tz=TZ_BEIJING).strftime("%Y-%m-%d %H:%M") if end_ts else "未知"
         caption = f"🔫 掌瓦每日商店\n\n👤 账号: {nickname}\n⏰ 刷新时间: {end_time}\n\n{'─' * 18}\n🕒 执行时间: {beijing_time_str()}"
-
-        # 直接发送图片
-        from notifier import _send_telegram_photo
-        _send_telegram_photo(caption, shop_image_path)
-        # 清理临时文件
-        if os.path.exists(shop_image_path):
-            os.remove(shop_image_path)
-        log_info("推送完成: 商店图片")
+        try:
+            _send_telegram_photo(caption, shop_image_path)
+            log_info("推送完成: 商店图片")
+        finally:
+            if os.path.exists(shop_image_path):
+                os.remove(shop_image_path)
     else:
         # 图片生成失败，回退到文字报告
         log_warning("商店图片生成失败，使用文字报告")
