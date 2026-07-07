@@ -40,6 +40,7 @@
 |:---:|:---:|:---:|:---:|:---|
 | <img src="docs/src/scripts/airport.png" width="24"> | Airport.py | 机场签到 | `0 0 * * *` | 每天午夜执行 |
 | <img src="docs/src/scripts/aliyun.png" width="24"> | Aliyun.py | 阿里云盘签到 | `0 0 * * *` | 每天午夜执行 |
+| <img src="docs/src/scripts/skyland.png" width="24"> | ArknightsBanner.py | 明日方舟寻访公告 | `0 10 * * *` | 每天10:00执行，监控官网卡池公告并提取每期抽卡数据 |
 | <img src="docs/src/scripts/bilibili.png" width="24"> | Bilibili.py | B站每日任务 | `0 0 * * *` | 每天午夜执行（漫画签到/投币/观看/分享） |
 | <img src="docs/src/scripts/hellogithub.png" width="24"> | HelloGithub.py | HelloGithub 月刊 | `0 8 1 * *` | 每月1号早上8点执行 |
 | <img src="docs/src/scripts/nodeseek.png" width="24"> | Nodeseek.py | Nodeseek 签到 | `0 0 * * *` | 每天午夜执行 |
@@ -66,6 +67,7 @@
 
 - [Airport.md](api/Airport.md) - 机场签到 API
 - [Aliyun.md](api/Aliyun.md) - 阿里云盘签到 API
+- [ArknightsBanner.md](api/ArknightsBanner.md) - 明日方舟寻访公告 API
 - [Bilibili.md](api/Bilibili.md) - Bilibili 每日任务 API
 - [HelloGithub.md](api/HelloGithub.md) - HelloGithub 签到 API
 - [Nodeseek.md](api/Nodeseek.md) - Nodeseek 签到 API
@@ -127,6 +129,7 @@ QinglongScripts/
 ├── api/                    # API 文档目录
 │   ├── Airport.md
 │   ├── Aliyun.md
+│   ├── ArknightsBanner.md
 │   ├── Bilibili.md
 │   ├── HelloGithub.md
 │   ├── Nodeseek.md
@@ -146,6 +149,7 @@ QinglongScripts/
 ├── .gitignore
 ├── Airport.py              # 机场签到
 ├── Aliyun.py               # 阿里云盘签到
+├── ArknightsBanner.py      # 明日方舟寻访公告监控
 ├── Bilibili.py             # B站每日任务
 ├── HelloGithub.py          # HelloGithub 月刊
 ├── LICENSE                 # MIT 许可证
