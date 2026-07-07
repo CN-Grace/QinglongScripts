@@ -4,8 +4,10 @@
 # new Env("明日方舟寻访公告")
 # 明日方舟限时寻访（卡池）公告监控
 # - 逆向官网 API (https://ak.hypergryph.com/api/news) 获取活动公告列表
-# - 识别"寻访"类公告，提取每期卡池数据（名称/类型/活动时间/UP干员/出率/保底/兑换所）
-# - 检测到新卡池公告时通过 notifier 推送通知
+# - 三层过滤识别卡池公告：① 标题含"寻访" ② 摘要含卡池关键词 ③ 详情确认含卡池数据
+#   （可抓到"活动附带寻访"等标题无"寻访"但内容是卡池的公告）
+# - 提取每期卡池数据（名称/类型/活动时间/UP干员/出率/保底/兑换所）
+# - 增量扫描：首次全量建库，日常遇已知 cid 即停；有新卡池时通过 notifier 推送通知
 #
 # 逆向所得接口：
 #   列表 GET https://ak.hypergryph.com/api/news?category={LATEST|ANNOUNCEMENT|ACTIVITY|NEWS}&page={n}
@@ -37,8 +39,16 @@ STATE_FILE = CONFIG_DIR / ".arknights_banner_state.json"
 BASE_URL = "https://ak.hypergryph.com"
 LIST_API = f"{BASE_URL}/api/news"
 DETAIL_URL = f"{BASE_URL}/news"
-SCAN_PAGES = 3          # 每次扫描活动公告页数（每页 6 条，3 页覆盖约 3-6 个月）
-BANNER_KEYWORD = "寻访"  # 卡池公告标题关键词
+MAX_SCAN_PAGES = 50       # 扫描活动公告页数上限（每页 6 条）；日常增量扫描遇已知 cid 即停
+BANNER_KEYWORD = "寻访"   # 卡池公告标题关键词（第一层过滤）
+# 摘要关键词（第二层过滤：标题无"寻访"但摘要含卡池信号，如"活动附带寻访"公告）
+GACHA_BRIEF_KW = [
+    "出现率上升", "占6★出率", "占5★出率", "占4★出率",
+    "寻访开启", "限时寻访", "限定寻访", "标准寻访", "中坚寻访",
+    "联合寻访", "干员寻访", "寻访数据契约", "出率提升", "6★出率", "5★出率",
+]
+# 详情确认关键词（第三层：确认正文确实含卡池数据，避免摘要误判）
+GACHA_CONFIRM_KW = ["出现率上升", "占6★出率", "占5★出率", "占4★出率", "6★出率", "5★出率", "4★出率"]
 MAX_MESSAGE_LENGTH = 3900
 REQUEST_TIMEOUT = 15
 SLEEP_BETWEEN = 0.5
@@ -83,31 +93,61 @@ def fetch_news_list(session, category: str = "ACTIVITY", page: int = 1) -> Dict:
     return data["data"]
 
 
-def fetch_gacha_banners(session, pages: int = SCAN_PAGES) -> List[Dict]:
-    """扫描活动公告，返回寻访（卡池）类公告列表，按发布时间升序"""
+def is_gacha_candidate(item: Dict) -> bool:
+    """两层过滤：标题含"寻访" 或 摘要含卡池关键词（抓活动附带的寻访公告）"""
+    title = item.get("title", "")
+    if BANNER_KEYWORD in title:
+        return True
+    brief = item.get("brief", "")
+    return any(k in brief for k in GACHA_BRIEF_KW)
+
+
+def confirm_gacha_by_detail(paragraphs: List[str]) -> bool:
+    """第三层确认：正文确实含卡池数据关键词（避免摘要误判）"""
+    text = " ".join(paragraphs)
+    return any(k in text for k in GACHA_CONFIRM_KW)
+
+
+def fetch_gacha_candidates(session, known_cids: set) -> tuple:
+    """增量扫描活动公告，返回 (卡池候选列表, 所有扫描到的 cid 集合)
+
+    - 首次运行(known_cids 为空)：扫描全部页，建立完整已知库
+    - 日常运行：扫到某页全部 cid 已知时提前停止（新公告必在前几页）
+    - 返回 all_cids 含所有扫描到的公告（含非卡池），用作下次增量停止基线
+    """
     banners: List[Dict] = []
-    seen = set()
-    for page in range(1, pages + 1):
-        log_info(f"正在获取活动公告第 {page}/{pages} 页...")
+    all_cids: set = set()
+    seen: set = set()
+    for page in range(1, MAX_SCAN_PAGES + 1):
+        log_info(f"正在获取活动公告第 {page} 页...")
         try:
             result = fetch_news_list(session, "ACTIVITY", page)
         except Exception as e:
             log_error(f"获取第 {page} 页失败: {e}")
             break
+        page_cids: List[str] = []
         for item in result.get("list", []):
             cid = item.get("cid")
-            if not cid or cid in seen:
+            if not cid:
+                continue
+            all_cids.add(cid)
+            page_cids.append(cid)
+            if cid in seen or cid in known_cids:
                 continue
             seen.add(cid)
-            if BANNER_KEYWORD in item.get("title", ""):
+            if is_gacha_candidate(item):
                 banners.append(item)
-        log_info(f"  第 {page} 页获取 {len(result.get('list', []))} 条，累计卡池公告 {len(banners)} 条")
+        log_info(f"  第 {page} 页 {len(result.get('list', []))} 条，累计卡池候选 {len(banners)} 条")
+        # 增量停止：本页全部 cid 已知 → 后续页更旧，无需再扫
+        if known_cids and page_cids and all(c in known_cids for c in page_cids):
+            log_info("本页全部为已知公告，停止扫描")
+            break
         if result.get("end"):
             log_info("已到末页，停止扫描")
             break
         time.sleep(SLEEP_BETWEEN)
     banners.sort(key=lambda x: x.get("displayTime", 0))
-    return banners
+    return banners, all_cids
 
 
 def fetch_banner_detail(session, cid: str) -> Dict:
@@ -157,26 +197,61 @@ def _ts_to_beijing(ts: int) -> str:
 
 
 def parse_banner(item: Dict, detail: Dict) -> Dict:
-    """从公告标题与正文段落解析卡池结构化数据"""
-    title = item.get("title", "")
-    # 标题形如：[狩猎凯旋干员寻访]【砺火成锋】限时寻访即将复刻开启
-    m = re.match(r"\[([^\]]+)\]\s*【([^】]+)】", title)
-    banner_type = m.group(1).strip() if m else ""
-    banner_name = m.group(2).strip() if m else ""
+    """从公告标题与正文段落解析卡池结构化数据
 
+    适配两种格式：
+      - 独立寻访公告：★★★★★★：麒麟R夜刀（占6★出率的50%）
+      - 活动附带寻访：★★★★★★（6★出率：2%）：琴柳 / 号角 / 白铁
+    """
+    title = item.get("title", "")
     paragraphs = detail.get("paragraphs", [])
 
-    # 活动时间
-    activity_time = ""
+    # 寻访名称：优先从"活动说明：活动期间【xxx】...寻访开启"提取，回退到标题
+    banner_name = ""
     for p in paragraphs:
-        if p.startswith("活动时间："):
-            activity_time = p[len("活动时间："):].strip()
+        m = re.search(r"活动期间【([^】]+)】.*?寻访开启", p)
+        if m:
+            banner_name = m.group(1).strip()
             break
+    if not banner_name:
+        m = re.match(r"\[([^\]]+)\]\s*【([^】]+)】", title)
+        if m:
+            banner_name = m.group(2).strip()
 
-    # 6★ UP（恰好 6 个 ★ 后紧跟「：」）
-    six_star = [p for p in paragraphs if re.match(r"^★{6}：", p)]
-    # 5★ UP（恰好 5 个 ★ 后紧跟「：」，排除 6★ 段落）
-    five_star = [p for p in paragraphs if re.match(r"^★{5}：", p)]
+    # 寻访类型：优先从"◆...寻访为【xxx】"提取，回退到标题前缀
+    banner_type = ""
+    for p in paragraphs:
+        m = re.search(r"寻访为【([^】]+)】", p)
+        if m:
+            banner_type = m.group(1).strip()
+            break
+    if not banner_type:
+        m = re.match(r"\[([^\]]+)\]", title)
+        if m:
+            banner_type = m.group(1).strip()
+
+    # 活动时间：定位寻访说明段，取其前面最近的"活动时间："（避免多子活动取错）
+    activity_time = ""
+    xf_idx = None
+    for i, p in enumerate(paragraphs):
+        if "寻访" in p and ("开启" in p or "出现率上升" in p or "以下干员" in p):
+            xf_idx = i
+            break
+    if xf_idx is not None:
+        for j in range(xf_idx, -1, -1):
+            if paragraphs[j].startswith("活动时间："):
+                activity_time = paragraphs[j][len("活动时间："):].strip()
+                break
+    if not activity_time:
+        for p in paragraphs:
+            if p.startswith("活动时间："):
+                activity_time = p[len("活动时间："):].strip()
+                break
+
+    # 6★/5★ UP：★5-6 开头，排除兑换所行（兼容"★★★★★★："与"★★★★★★（...）："两种）
+    star = [p for p in paragraphs if re.match(r"^★{5,6}", p) and "寻访数据契约" not in p]
+    six_star = [p for p in star if p.startswith("★★★★★★")]
+    five_star = [p for p in star if not p.startswith("★★★★★★")]
 
     # 寻访数据契约兑换所
     exchange = [p for p in paragraphs
@@ -191,9 +266,8 @@ def parse_banner(item: Dict, detail: Dict) -> Dict:
             rules.append(p)
         elif re.match(r"^【.+?】说明$", p):
             rules.append(p)
-    # 去重保序
-    seen = set()
-    rules = [x for x in rules if not (x in seen or seen.add(x))]
+    seen_r = set()
+    rules = [x for x in rules if not (x in seen_r or seen_r.add(x))]
 
     return {
         "cid": item.get("cid"),
@@ -283,60 +357,80 @@ def main():
     is_first_run = len(known_cids) == 0
 
     session = create_session()
-
     try:
-        banners = fetch_gacha_banners(session, SCAN_PAGES)
+        candidates, all_cids = fetch_gacha_candidates(session, known_cids)
     except Exception as e:
         log_error(f"获取卡池公告列表失败: {e}")
         notify_send("明日方舟寻访公告", f"❌ 获取公告列表失败: {e}")
         return
 
-    if not banners:
-        log_warning("未扫描到任何寻访类公告")
-        return
+    log_info(f"扫描完成：本次扫描 {len(all_cids)} 条公告，新卡池候选 {len(candidates)} 个")
+    # 更新已知 cid（所有扫描到的，含非卡池，用作下次增量停止基线）
+    new_known = known_cids | all_cids
 
-    log_info(f"共扫描到 {len(banners)} 个寻访类公告")
-
-    current_cids = {b["cid"] for b in banners}
-    # 新公告 = 本次扫描到且尚未知的
-    new_banners = [b for b in banners if b["cid"] not in known_cids]
-
+    # ---------- 首次运行：记录全部已知，仅推送最新一期 ----------
     if is_first_run:
-        # 首次运行：记录全部已知，仅推送最新一期作为当前状态
-        log_info("首次运行，记录当前全部卡池，推送最新一期")
-        latest = banners[-1]
-        try:
-            detail = fetch_banner_detail(session, latest["cid"])
-            parsed = parse_banner(latest, detail)
-            report = format_banner_report(parsed)
-            print("\n" + report + "\n")
-            for i, part in enumerate(split_message(report), 1):
-                notify_send(f"明日方舟 寻访公告（首次初始化）", part)
-                if i < len(split_message(report)):
-                    time.sleep(2)
-            notified_cids.add(latest["cid"])
-        except Exception as e:
-            log_error(f"处理最新卡池 {latest.get('cid')} 失败: {e}")
-        state["known_cids"] = sorted(current_cids)
-        state["notified_cids"] = sorted(notified_cids | current_cids)
+        log_info("首次运行，记录当前全部公告 cid，推送最新卡池")
+        if candidates:
+            latest = candidates[-1]
+            try:
+                detail = fetch_banner_detail(session, latest["cid"])
+                if BANNER_KEYWORD in latest.get("title", "") or confirm_gacha_by_detail(detail["paragraphs"]):
+                    parsed = parse_banner(latest, detail)
+                    report = format_banner_report(parsed)
+                    print("\n" + report + "\n")
+                    parts = split_message(report)
+                    for i, part in enumerate(parts, 1):
+                        notify_send("明日方舟 寻访公告（首次初始化）", part)
+                        if i < len(parts):
+                            time.sleep(2)
+                    notified_cids.add(latest["cid"])
+                else:
+                    log_warning(f"最新候选 cid={latest.get('cid')} 详情未确认卡池数据，跳过")
+            except Exception as e:
+                log_error(f"处理最新卡池 {latest.get('cid')} 失败: {e}")
+        state["known_cids"] = sorted(new_known)
+        state["notified_cids"] = sorted(notified_cids)
         save_state(state)
         log_info("===== 首次初始化完成 =====")
         return
 
-    if not new_banners:
-        log_info(f"暂无新卡池公告（已知 {len(known_cids)} 个）")
-        state["known_cids"] = sorted(known_cids | current_cids)
+    # ---------- 日常运行：候选详情确认 + 推送 ----------
+    if not candidates:
+        log_info(f"暂无新卡池公告（已知 {len(new_known)} 个）")
+        state["known_cids"] = sorted(new_known)
         save_state(state)
         return
 
-    log_success(f"发现 {len(new_banners)} 个新卡池公告！")
-    total = len(new_banners)
-    success = 0
-    for idx, item in enumerate(new_banners, 1):
+    log_success(f"发现 {len(candidates)} 个新卡池候选，开始详情确认")
+    confirmed = []  # [(item, detail), ...]
+    for item in candidates:
         cid = item["cid"]
-        log_info(f"正在处理新卡池 [{idx}/{total}] cid={cid}：{item.get('title')}")
+        title_hit = BANNER_KEYWORD in item.get("title", "")
         try:
             detail = fetch_banner_detail(session, cid)
+            # 标题命中直接采信；仅 brief 命中的需详情确认，避免误报
+            if not title_hit and not confirm_gacha_by_detail(detail["paragraphs"]):
+                log_info(f"候选 cid={cid} 详情未确认卡池数据，跳过：{item.get('title', '')[:40]}")
+                continue
+            confirmed.append((item, detail))
+        except Exception as e:
+            log_error(f"获取候选 cid={cid} 详情失败: {e}")
+        time.sleep(SLEEP_BETWEEN)
+
+    if not confirmed:
+        log_info("候选均未通过详情确认，无新卡池可推送")
+        state["known_cids"] = sorted(new_known)
+        save_state(state)
+        return
+
+    total = len(confirmed)
+    log_success(f"确认 {total} 个新卡池公告，开始推送")
+    success = 0
+    for idx, (item, detail) in enumerate(confirmed, 1):
+        cid = item["cid"]
+        log_info(f"正在推送新卡池 [{idx}/{total}] cid={cid}：{item.get('title', '')[:40]}")
+        try:
             parsed = parse_banner(item, detail)
             report = format_banner_report(parsed, idx, total)
             print("\n" + report + "\n")
@@ -353,9 +447,8 @@ def main():
             log_success(f"卡池 cid={cid} 推送完成")
         except Exception as e:
             log_error(f"处理卡池 cid={cid} 失败: {e}")
-        time.sleep(SLEEP_BETWEEN)
 
-    state["known_cids"] = sorted(known_cids | current_cids)
+    state["known_cids"] = sorted(new_known)
     state["notified_cids"] = sorted(notified_cids)
     save_state(state)
     log_info(f"===== 任务完成：新推送 {success}/{total} =====")
