@@ -42,6 +42,7 @@
 | <img src="docs/src/scripts/aliyun.png" width="24"> | Aliyun.py | 阿里云盘签到 | `0 0 * * *` | 每天午夜执行 |
 | <img src="docs/src/scripts/skyland.png" width="24"> | ArknightsBanner.py | 明日方舟寻访公告 | `0 10 * * *` | 每天10:00执行，监控官网卡池公告并提取每期抽卡数据 |
 | <img src="docs/src/scripts/bilibili.png" width="24"> | Bilibili.py | B站每日任务 | `0 0 * * *` | 每天午夜执行（漫画签到/投币/观看/分享） |
+| <img src="docs/src/scripts/glados.png" width="24"> | Glados.py | GLaDOS / Railgun 签到 | `0 0 * * *` | 每天午夜执行（自动探测 glados.cloud / railgun.info 归属域名） |
 | <img src="docs/src/scripts/hellogithub.png" width="24"> | HelloGithub.py | HelloGithub 月刊 | `0 8 1 * *` | 每月1号早上8点执行 |
 | <img src="docs/src/scripts/nodeseek.png" width="24"> | Nodeseek.py | Nodeseek 签到 | `0 0 * * *` | 每天午夜执行 |
 | <img src="docs/src/scripts/ssl.png" width="24"> | SSL.py | SSL 证书检查 | `0 0 * * *` | 每天午夜执行，通过 Cloudflare API 自动获取域名列表并检查证书到期时间 |
@@ -69,6 +70,7 @@
 - [Aliyun.md](api/Aliyun.md) - 阿里云盘签到 API
 - [ArknightsBanner.md](api/ArknightsBanner.md) - 明日方舟寻访公告 API
 - [Bilibili.md](api/Bilibili.md) - Bilibili 每日任务 API
+- [Glados.md](api/Glados.md) - GLaDOS / Railgun 签到 API
 - [HelloGithub.md](api/HelloGithub.md) - HelloGithub 签到 API
 - [Nodeseek.md](api/Nodeseek.md) - Nodeseek 签到 API
 - [SSL.md](api/SSL.md) - SSL 证书监控 API
@@ -131,6 +133,7 @@ QinglongScripts/
 │   ├── Aliyun.md
 │   ├── ArknightsBanner.md
 │   ├── Bilibili.md
+│   ├── Glados.md
 │   ├── HelloGithub.md
 │   ├── Nodeseek.md
 │   ├── SSL.md
@@ -151,6 +154,7 @@ QinglongScripts/
 ├── Aliyun.py               # 阿里云盘签到
 ├── ArknightsBanner.py      # 明日方舟寻访公告监控
 ├── Bilibili.py             # B站每日任务
+├── Glados.py               # GLaDOS / Railgun 签到
 ├── HelloGithub.py          # HelloGithub 月刊
 ├── LICENSE                 # MIT 许可证
 ├── Nodeseek.py             # Nodeseek 签到
