@@ -42,7 +42,7 @@
 | <img src="docs/src/scripts/aliyun.png" width="24"> | Aliyun.py | 阿里云盘签到 | `0 0 * * *` | 每天午夜执行 |
 | <img src="docs/src/scripts/skyland.png" width="24"> | ArknightsBanner.py | 明日方舟寻访公告 | `0 10 * * *` | 每天10:00执行，监控官网卡池公告并提取每期抽卡数据 |
 | <img src="docs/src/scripts/bilibili.png" width="24"> | Bilibili.py | B站每日任务 | `0 0 * * *` | 每天午夜执行（漫画签到/投币/观看/分享） |
-| <img src="docs/src/scripts/glados.png" width="24"> | Glados.py | GLaDOS / Railgun 签到 | `0 0 * * *` | 每天午夜执行（自动探测 glados.cloud / railgun.info 归属域名） |
+| <img src="docs/src/scripts/glados.png" width="24"> | Glados.py | GLaDOS / Railgun 签到 | `0 0 * * *` | 每天午夜执行（自动探测归属域名，Cookie 全失效时邮箱验证码保底登录） |
 | <img src="docs/src/scripts/hellogithub.png" width="24"> | HelloGithub.py | HelloGithub 月刊 | `0 8 1 * *` | 每月1号早上8点执行 |
 | <img src="docs/src/scripts/linuxsb.png" width="24"> | LinuxSB.py | 烧饼社区签到 | `0 9 * * *` | 每天9点执行（自动签到 + 点击侧栏有奖广告领烧饼） |
 | <img src="docs/src/scripts/nodeseek.png" width="24"> | Nodeseek.py | Nodeseek 签到 | `0 0 * * *` | 每天午夜执行 |
