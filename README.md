@@ -44,6 +44,7 @@
 | <img src="docs/src/scripts/bilibili.png" width="24"> | Bilibili.py | B站每日任务 | `0 0 * * *` | 每天午夜执行（漫画签到/投币/观看/分享） |
 | <img src="docs/src/scripts/glados.png" width="24"> | Glados.py | GLaDOS / Railgun 签到 | `0 0 * * *` | 每天午夜执行（自动探测 glados.cloud / railgun.info 归属域名） |
 | <img src="docs/src/scripts/hellogithub.png" width="24"> | HelloGithub.py | HelloGithub 月刊 | `0 8 1 * *` | 每月1号早上8点执行 |
+| <img src="docs/src/scripts/linuxsb.png" width="24"> | LinuxSB.py | 烧饼社区签到 | `0 9 * * *` | 每天9点执行（自动签到 + 点击侧栏有奖广告领烧饼） |
 | <img src="docs/src/scripts/nodeseek.png" width="24"> | Nodeseek.py | Nodeseek 签到 | `0 0 * * *` | 每天午夜执行 |
 | <img src="docs/src/scripts/ssl.png" width="24"> | SSL.py | SSL 证书检查 | `0 0 * * *` | 每天午夜执行，通过 Cloudflare API 自动获取域名列表并检查证书到期时间 |
 | <img src="docs/src/scripts/skyland.png" width="24"> | skyland.py | 森空岛签到 | `0 8 * * *` | 每天早上8点执行（明日方舟/终末地） |
@@ -72,6 +73,7 @@
 - [Bilibili.md](api/Bilibili.md) - Bilibili 每日任务 API
 - [Glados.md](api/Glados.md) - GLaDOS / Railgun 签到 API
 - [HelloGithub.md](api/HelloGithub.md) - HelloGithub 签到 API
+- [LinuxSB.md](api/LinuxSB.md) - linux.sb（烧饼社区）签到 API
 - [Nodeseek.md](api/Nodeseek.md) - Nodeseek 签到 API
 - [SSL.md](api/SSL.md) - SSL 证书监控 API
 - [Skyland.md](api/Skyland.md) - 森空岛签到 API
@@ -135,6 +137,7 @@ QinglongScripts/
 │   ├── Bilibili.md
 │   ├── Glados.md
 │   ├── HelloGithub.md
+│   ├── LinuxSB.md
 │   ├── Nodeseek.md
 │   ├── SSL.md
 │   ├── Skyland.md
@@ -157,6 +160,7 @@ QinglongScripts/
 ├── Glados.py               # GLaDOS / Railgun 签到
 ├── HelloGithub.py          # HelloGithub 月刊
 ├── LICENSE                 # MIT 许可证
+├── LinuxSB.py              # linux.sb（烧饼社区）签到
 ├── Nodeseek.py             # Nodeseek 签到
 ├── notifier.py             # 通知模块
 ├── README.md               # 项目说明
