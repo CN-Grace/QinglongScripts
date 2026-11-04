@@ -34,8 +34,9 @@ QUALITY_MAP = {
 
 API_BASE = "https://app.mval.qq.com"
 COMMON_PARAMS = "source_game_zone=agame&game_zone=agame"
-# 仅用于缓存商店图片的中文字体（资源文件，凭据一律走环境变量）
-CONFIG_DIR = Path(__file__).parent / "config"
+CONFIG_DIR = Path(__file__).parent / "config"   # 字体缓存 + 续期结果落盘
+# 续期结果的落盘文件（含 ct/tid/access_token），凭据候选顺序为「文件 -> 环境变量」
+COOKIE_FILE = CONFIG_DIR / ".valorant_cookie"
 
 
 def parse_cookie(cookie: str) -> dict:
@@ -47,6 +48,28 @@ def parse_cookie(cookie: str) -> dict:
             k, v = item.split("=", 1)
             cookie_dict[k.strip()] = v.strip()
     return cookie_dict
+
+
+def load_saved_cookie() -> dict:
+    """读取上次续期落盘的完整 cookie（含 tid / 新 ct / 新 AT）"""
+    try:
+        if COOKIE_FILE.exists():
+            data = json.loads(COOKIE_FILE.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                return {str(k): str(v) for k, v in data.items() if v}
+    except (OSError, ValueError) as e:
+        log_warning(f"读取 {COOKIE_FILE.name} 失败: {type(e).__name__}")
+    return {}
+
+
+def save_cookie(cookie_dict: dict) -> None:
+    """把续期后的完整 cookie 落盘，供下次优先复用"""
+    try:
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        COOKIE_FILE.write_text(
+            json.dumps(cookie_dict, ensure_ascii=False, indent=2), encoding="utf-8")
+    except OSError as e:
+        log_warning(f"保存 {COOKIE_FILE.name} 失败: {type(e).__name__}")
 
 
 def create_session(cookie) -> requests.Session:
@@ -469,45 +492,68 @@ def build_shop_image(items: list, nickname: str, end_ts: int) -> str:
 
 
 def main():
-    if not VALORANT_COOKIE:
-        log_error("未配置 VALORANT_COOKIE，请在环境变量中设置")
-        notify_send("掌瓦每日商店 错误", "❌ 未配置 VALORANT_COOKIE")
+    # 凭据候选：本地落盘文件优先，刷新失败再回退到环境变量
+    candidates = []
+    saved = load_saved_cookie()
+    if saved and saved.get("ct"):
+        candidates.append(("落盘文件 " + COOKIE_FILE.name, saved))
+    env_dict = parse_cookie(VALORANT_COOKIE)
+    if env_dict.get("ct"):
+        candidates.append(("环境变量 VALORANT_COOKIE", env_dict))
+    if not candidates:
+        log_error("既没有落盘 cookie，VALORANT_COOKIE 里也没有 ct 字段")
+        log_error("请在手机上跑一次 valorant_cookie.sh，或重新抓包后填入环境变量")
+        notify_send("掌瓦每日商店 错误", "❌ 没有可用的 ct（落盘与环境变量都缺）")
         return
 
-    # 唯一数据来源：环境变量 VALORANT_COOKIE（由 valorant_cookie.sh 续期后写入）
-    cookie_dict = parse_cookie(VALORANT_COOKIE)
-    ct = cookie_dict.get("ct", "").strip()
-    if not ct:
-        log_error("VALORANT_COOKIE 里没有 ct 字段，请重新抓包或跑一次 valorant_cookie.sh")
-        notify_send("掌瓦每日商店 错误", "❌ VALORANT_COOKIE 缺少 ct 字段")
+    session = None
+    ct = ""
+    ct_ok = False
+    ct_reason = ""
+    used_source = ""
+    for source, cookie_dict in candidates:
+        ct = (cookie_dict.get("ct") or "").strip()
+        log_info(f"尝试续期，凭据来源: {source}")
+        session = create_session(cookie_dict)
+        # 顺序不能反：先 refresh_client_ticket 换出 wt(=tid)，再刷 access_token
+        new_ct, ok, reason = refresh_web_ticket(session, ct)
+        if new_ct and new_ct != ct:
+            ct = new_ct
+            ct_ok = ok
+            ct_reason = reason
+            used_source = source
+            break
+        ct_ok = ok
+        ct_reason = reason or "接口未返回新 ct"
+        log_warning(f"{source} 续期失败：{ct_reason}")
+        if len(candidates) > 1:
+            log_info("回退到下一个凭据来源…")
+
+    if not ct_ok:
+        log_error(f"ct 无法续期：{ct_reason}")
+        notify_send(
+            "掌瓦商店 Token 告警",
+            "⚠️ ct 无法续期，落盘文件和环境变量都试过了，需要从手机 App 重新获取"
+            "｜原因: " + ct_reason,
+        )
         return
-    log_info("凭据来源: 环境变量 VALORANT_COOKIE（不读本地文件）")
 
-    session = create_session(cookie_dict)
-
-    # 刷新顺序不能反：必须先 refresh_client_ticket 换出 wt(=tid)，
-    # 再刷 access_token —— AT 接口要校验 clientType + tid，缺 tid 必失败
-    new_ct, ct_ok, ct_reason = refresh_web_ticket(session, ct)
-    if new_ct and new_ct != ct:
-        ct = new_ct
-        log_success("ct 已刷新（仅本次运行有效，不回写环境变量）")
-    elif not ct_ok:
-        log_warning("ct 刷新失败，可能需要重新抓包")
+    if used_source.startswith("落盘"):
+        log_success(f"ct 已从{used_source}续期成功")
+    else:
+        log_success(f"ct 已从{used_source}续期成功（落盘文件不可用，已回退）")
 
     new_at = refresh_token(session)
     if not new_at:
         log_warning("access_token 刷新失败，尝试用旧 token 继续...")
 
-    if not ct_ok:
-        reason = (ct_reason or "接口未返回新 ct").strip()
-        log_error(f"ct 无法续期：{reason}")
-        notify_send(
-            "掌瓦商店 Token 告警",
-            "⚠️ ct 无法续期，需要从手机 App 重新获取"
-            "｜原因: " + reason
-            + "｜access_token 仍可刷新，商店暂时还能用；"
-            + "但旧 ct 一旦彻底失效就只能重抓。",
-        )
+    # 落盘续期结果（含新 ct + 新 tid + 新 AT），下次优先复用
+    refreshed = {c.name: c.value for c in session.cookies}
+    refreshed["ct"] = ct
+    for k, v in parse_cookie(VALORANT_COOKIE).items():
+        refreshed.setdefault(k, v)
+    save_cookie(refreshed)
+    log_success(f"续期结果已落盘到 {COOKIE_FILE.name}")
 
     # 获取绑定账号
     bind_result = api_post(session, "/go/auth/bind_relation_list")
