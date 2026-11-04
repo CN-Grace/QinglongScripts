@@ -667,7 +667,15 @@ def claim_ads(session: requests.Session, page: LsbPage, report: "AccountReport")
 
 
 def toggle_ads(session: requests.Session, page: LsbPage, report: "AccountReport") -> LsbPage:
-    """显示 → 隐藏 → 恢复显示广告板，每一步都以站点返回结果为准。"""
+    """领完广告后的收尾：「显示 → 隐藏」，**结尾保持隐藏**。
+
+    为什么还要显示一次：站点要求「广告被看到」才计奖，且显示/隐藏这两个动作
+    本身也可能触发暴击奖励（站内公告《广告隐藏功能上线可触发暴击得积分》），
+    所以先把广告板亮一下拿奖励，再关掉。
+
+    已是目标状态的步骤会被自动跳过（无状态变化，站点也不会给暴击），所以
+    广告板本来就可见时不会产生无谓写入。次日领取前由 _ensure_visible 恢复可见。
+    """
     if not page.board_seen:
         return page
 
@@ -722,12 +730,10 @@ def toggle_ads(session: requests.Session, page: LsbPage, report: "AccountReport"
             stopped = True
             return
 
-    if page.board_hidden:
-        step("show", "显示广告板")
+    # 显示一次：广告被看到才计奖，且显示/隐藏本身可能触发暴击奖励
+    step("show", "显示广告板")
+    # 收尾关掉：结尾保持隐藏
     step("hide", "隐藏广告板")
-    # 只有确实被隐藏了才需要恢复显示；hide 未生效时不做多余写入
-    if page.board_hidden:
-        step("show", "恢复显示广告板")
 
     if steps:
         report.lines.append("  📺 广告板：" + " → ".join(steps))
