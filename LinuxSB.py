@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # cron: 0 9 * * *
 # new Env("烧饼社区签到")
-# linux.sb（烧饼社区）自动签到 + 点击有奖广告领取烧饼
+# linux.sb（烧饼社区）自动签到 + 点击有奖广告领取积分
 # - 签到：访问首页触发站点自动签到，未签到时回退提交 /daily_checkin 的签到表单
 # - 领饼：解析侧栏「有奖广告」（红点）槽位，逐个提交站点自带的领取表单
 # - 所有写操作（签到 / 领奖 / 显示隐藏广告）一律不自动重试，超时只报告「结果未知」
@@ -63,6 +63,19 @@ VOID_TAGS = {
 CHECKIN_DONE_RE = re.compile(r"已签到|今日已签|明日再来")
 CHECKIN_FLASH_RE = re.compile(r"已帮您完成自动签到|签到成功|签到获得")
 CHECKIN_FORM_RE = re.compile(r"check.?in", re.IGNORECASE)
+# 签到回执里的积分数量。真实文案形如：
+#   "您是社区主理人用户组，已帮您完成自动签到！积分+98"
+# 站长说明：每日签到奖励 = 活跃度 × 10，登录社区时自动到账，故数量每天不同
+CHECKIN_POINTS_RE = re.compile(r"积分\s*[+＋]\s*(\d+)")
+# 只用于从原始响应里取 flash，避免直接扫签到记录页正文（那里有历史积分会误取）
+FLASH_RE = re.compile(r'__pageFlash\s*=\s*("(?:\\.|[^"\\])*")')
+
+
+def _points_from(text: str) -> int:
+    """从回执文本里取积分数量，取不到返回 0"""
+    match = CHECKIN_POINTS_RE.search(text or "")
+    return int(match.group(1)) if match else 0
+
 
 CHECKIN_ICON = {"success": "✅", "repeat": "ℹ️", "fail": "❌", "unknown": "❓"}
 
@@ -415,25 +428,26 @@ def fetch_home(session: requests.Session) -> LsbPage:
 
 
 # ==================== 签到 ====================
-def do_checkin(session: requests.Session, page: LsbPage) -> Tuple[str, str]:
+def do_checkin(session: requests.Session, page: LsbPage) -> Tuple[str, str, int]:
     """签到：优先采信首页 flash，其次回退提交 /daily_checkin 的签到表单。
 
-    返回 (状态, 说明)，状态取 success / repeat / fail / unknown。
+    返回 (状态, 说明, 本次签到积分)，状态取 success / repeat / fail / unknown。
+    积分只从首页 flash 或接口 JSON 回执里取 —— 签到记录页正文含历史积分，直接扫会误取。
     """
     if CHECKIN_FLASH_RE.search(page.flash):
-        return "success", f"首页自动签到已回执（{page.flash.strip()}）"
+        return "success", f"首页自动签到已回执（{page.flash.strip()}）", _points_from(page.flash)
 
     try:
         response = _get(session, CHECKIN_URL)
     except LsbUnknown as exc:
-        return "unknown", str(exc)
+        return "unknown", str(exc), 0
 
     if "/login" in response.url:
-        return "fail", "签到页被重定向到登录页，Cookie 可能已失效"
+        return "fail", "签到页被重定向到登录页，Cookie 可能已失效", 0
 
     text = response.text
     if CHECKIN_DONE_RE.search(text):
-        return "repeat", "今日已签到"
+        return "repeat", "今日已签到", 0
 
     checkin_page = parse_page(text)
     form = next(
@@ -445,19 +459,19 @@ def do_checkin(session: requests.Session, page: LsbPage) -> Tuple[str, str]:
     )
     problem = _form_ready(form, "签到", require_csrf=False)
     if problem:
-        return "unknown", f"{problem}，无法签到；请在站内人工核对"
+        return "unknown", f"{problem}，无法签到；请在站内人工核对", 0
     assert form is not None  # _form_ready 已保证
 
     try:
         result = _post_form(session, form.action, dict(form.fields), "签到", referer=CHECKIN_URL)
     except LsbUnknown as exc:
-        return "unknown", str(exc)
+        return "unknown", str(exc), 0
     except LsbError as exc:
-        return "fail", str(exc)
+        return "fail", str(exc), 0
 
     # 会话失效时站点会 3xx 到登录页，不能当成签到成功
     if result.is_redirect and "/login" in (result.headers.get("Location") or ""):
-        return "fail", "签到请求被重定向到登录页，Cookie 可能已失效"
+        return "fail", "签到请求被重定向到登录页，Cookie 可能已失效", 0
 
     # 签到回执可能是 JSON，也可能是一次 303 后的 HTML 页面
     try:
@@ -467,14 +481,26 @@ def do_checkin(session: requests.Session, page: LsbPage) -> Tuple[str, str]:
     if isinstance(data, dict):
         if not data.get("ok"):
             reason = data.get("message") or data.get("error") or "站点未确认签到成功"
-            return ("repeat" if CHECKIN_DONE_RE.search(str(reason)) else "fail"), str(reason)
-        return "success", str(data.get("message") or "签到成功")
+            return ("repeat" if CHECKIN_DONE_RE.search(str(reason)) else "fail"), str(reason), 0
+        message = str(data.get("message") or "签到成功")
+        # 优先用接口自带的 points 字段，其次从 message 里提
+        points = _num(data.get("points")) or _points_from(message)
+        return "success", message, points
 
     if result.status_code >= 400:
-        return "fail", f"签到失败：HTTP {result.status_code}"
+        return "fail", f"签到失败：HTTP {result.status_code}", 0
     if CHECKIN_DONE_RE.search(result.text):
-        return "repeat", "今日已签到"
-    return "success", "签到请求已提交（站点未返回明确提示，请在站内核对）"
+        return "repeat", "今日已签到", 0
+    # 303 后的页面里只认 flash（当天回执），不扫整页正文
+    flash_match = FLASH_RE.search(result.text or "")
+    if flash_match:
+        try:
+            flash = json.loads(flash_match.group(1))
+        except (ValueError, TypeError):
+            flash = ""
+        if CHECKIN_FLASH_RE.search(flash or ""):
+            return "success", flash.strip(), _points_from(flash)
+    return "success", "签到请求已提交（站点未返回明确提示，请在站内核对）", 0
 
 
 # ==================== 有奖广告 ====================
@@ -514,7 +540,7 @@ def _ensure_visible(
 
 
 def claim_ads(session: requests.Session, page: LsbPage, report: "AccountReport") -> LsbPage:
-    """逐个点击侧栏有奖广告（红点）领取烧饼。
+    """逐个点击侧栏有奖广告（红点）领取积分。
 
     每点击一次都重新读取首页，以站点的实际状态（页面标记 + 接口 lottery）为准，
     而不是本地记账，因此当天重复执行天然幂等。
@@ -595,8 +621,8 @@ def claim_ads(session: requests.Session, page: LsbPage, report: "AccountReport")
         # 必须拿到发奖或「已领取」凭据；否则说明点击未被服务端承认，停下来人工核对
         if _confirmed(data.get("rewarded")) and gain > 0:
             gain_total += gain
-            report.lines.append(f"  🫓 {label}：明确新增 +{gain} 烧饼")
-            log_success(f"{label}：+{gain} 烧饼")
+            report.lines.append(f"  🫓 {label}：明确新增 +{gain} 积分")
+            log_success(f"{label}：+{gain} 积分")
         elif _confirmed(data.get("already_drawn")):
             report.lines.append(f"  ℹ️ {label}：今日已完成该广告")
         elif slot.placement_key in server_claimed:
@@ -681,8 +707,8 @@ def toggle_ads(session: requests.Session, page: LsbPage, report: "AccountReport"
         gain = _num(data.get("points"))
         if _confirmed(data.get("rewarded")) and gain > 0:
             report.points += gain
-            report.lines.append(f"  🫓 {label}：+{gain} 烧饼")
-            log_success(f"{label}：+{gain} 烧饼")
+            report.lines.append(f"  🫓 {label}：+{gain} 积分")
+            log_success(f"{label}：+{gain} 积分")
         else:
             steps.append(label)
         lottery = data.get("lottery")
@@ -738,7 +764,7 @@ def run_account(index: int, raw_cookie: str) -> AccountReport:
     log_success(f"已确认登录：{page.username}")
 
     # ---- 2. 签到 ----
-    state, message = do_checkin(session, page)
+    state, message, checkin_points = do_checkin(session, page)
     report.lines.append(f"  {CHECKIN_ICON.get(state, '❓')} 签到：{message}")
     if state in ("success", "repeat"):
         log_success(f"签到：{message}")
@@ -746,6 +772,9 @@ def run_account(index: int, raw_cookie: str) -> AccountReport:
         log_warning(f"签到：{message}")
         if state == "unknown":
             report.status = "unknown"
+    if checkin_points:
+        report.points += checkin_points
+        report.lines.append(f"  🫓 每日签到：+{checkin_points} 积分")
 
     # ---- 3. 有奖广告 ----
     if not _enabled(LSB_ADS):
@@ -778,7 +807,7 @@ def build_report(reports: List[AccountReport]) -> str:
         lines.append(f"👤 账号 {report.index} · {title}")
         lines.extend(report.lines)
         if report.points:
-            lines.append(f"  🫓 本次明确新增：+{report.points} 烧饼")
+            lines.append(f"  🫓 本次明确新增：+{report.points} 积分")
         lines.append("")
 
     lines.append(f"📊 统计: 成功 {stats['success']} · 失败 {stats['fail']} · 结果未知 {stats['unknown']}")
