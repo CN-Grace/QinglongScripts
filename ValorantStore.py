@@ -162,8 +162,9 @@ def refresh_web_ticket(session: requests.Session, ct: str) -> tuple:
     }
     rct_result = api_post(session, "/go/auth/refresh_client_ticket", rct_body)
     if rct_result.get("result") != 0:
-        log_warning(f"refresh_client_ticket 失败: {rct_result.get('msg', rct_result.get('err_msg', '未知'))}")
-        return ct, False
+        msg = str(rct_result.get('msg') or rct_result.get('err_msg') or '未知')
+        log_warning(f"refresh_client_ticket 失败: {msg}")
+        return ct, False, msg
 
     rct_data = rct_result.get("data", {})
     ct_info = rct_data.get("ct_info", rct_data)
@@ -194,8 +195,13 @@ def refresh_web_ticket(session: requests.Session, ct: str) -> tuple:
         log_success(f"web ticket (tid) 刷新成功 (有效期 {ct_info.get('refresh_wt_span', '?')}s)")
 
     if not new_ct:
-        log_warning("refresh_client_ticket 未返回新 ct")
-        return ct, False
+        detail = ""
+        if isinstance(ct_info, dict):
+            detail = str(ct_info.get("errmsg") or "").strip()
+        if not detail:
+            detail = str(rct_result.get("msg") or rct_result.get("err_msg") or "").strip()
+        log_warning(f"refresh_client_ticket 未返回新 ct｜{detail or '无错误信息'}")
+        return ct, False, detail
 
     # Step 2: get_client_tmp_ticket → ctt + sk
     ctt_body = {
@@ -204,7 +210,7 @@ def refresh_web_ticket(session: requests.Session, ct: str) -> tuple:
     }
     api_post(session, "/go/auth/get_client_tmp_ticket", ctt_body)
 
-    return new_ct, bool(wt)
+    return new_ct, bool(wt), ""
 
 
 def refresh_token(session: requests.Session) -> str:
@@ -539,7 +545,7 @@ def main():
 
     # 刷新顺序不能反：必须先 refresh_client_ticket 换出 wt(=tid)，
     # 再刷 access_token —— AT 接口要校验 clientType + tid，缺 tid 必失败
-    new_ct, ct_ok = refresh_web_ticket(session, ct)
+    new_ct, ct_ok, ct_reason = refresh_web_ticket(session, ct)
     if new_ct and new_ct != ct:
         ct = new_ct
         save_ct(ct)
@@ -552,7 +558,15 @@ def main():
         log_warning("access_token 刷新失败，尝试用旧 token 继续...")
 
     if not ct_ok:
-        notify_send("掌瓦商店 Token 告警", "⚠️ access_token 或 ct 刷新失败，请尽快重新抓包，否则下次将无法获取商店")
+        reason = (ct_reason or "接口未返回新 ct").strip()
+        log_error(f"ct 无法续期：{reason}")
+        notify_send(
+            "掌瓦商店 Token 告警",
+            "⚠️ ct 无法续期，需要从手机 App 重新获取"
+            "｜原因: " + reason
+            + "｜access_token 仍可刷新，商店暂时还能用；"
+            + "但旧 ct 一旦彻底失效就只能重抓。",
+        )
 
     # 落盘完整 cookie（含新 tid + 新 ct + 新 AT），下次直接复用
     refreshed = {c.name: c.value for c in session.cookies}
