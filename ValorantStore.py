@@ -34,11 +34,8 @@ QUALITY_MAP = {
 
 API_BASE = "https://app.mval.qq.com"
 COMMON_PARAMS = "source_game_zone=agame&game_zone=agame"
+# 仅用于缓存商店图片的中文字体（资源文件，凭据一律走环境变量）
 CONFIG_DIR = Path(__file__).parent / "config"
-CT_FILE = CONFIG_DIR / ".valorant_ct"
-AT_FILE = CONFIG_DIR / ".valorant_at"  # 持久化 access_token
-# 持久化刷新后的完整 cookie（含 tid）——续期链能滚起来的关键
-COOKIE_FILE = CONFIG_DIR / ".valorant_cookie"
 
 
 def parse_cookie(cookie: str) -> dict:
@@ -50,56 +47,6 @@ def parse_cookie(cookie: str) -> dict:
             k, v = item.split("=", 1)
             cookie_dict[k.strip()] = v.strip()
     return cookie_dict
-
-
-def load_ct(cookie_dict: dict) -> str:
-    """加载 ct: 优先环境变量，其次本地文件"""
-    ct = cookie_dict.get("ct", "")
-    if ct:
-        return ct
-    if CT_FILE.exists():
-        ct = CT_FILE.read_text().strip()
-        if ct:
-            return ct
-    return ""
-
-
-def save_ct(ct: str):
-    """保存 ct 到本地文件，供下次运行使用"""
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    CT_FILE.write_text(ct)
-
-
-def load_saved_cookie() -> dict:
-    """读取上次刷新后落盘的完整 cookie（含 tid / 新 ct）
-
-    ⚠️ 这是续期能不能滚起来的关键：tid 只在 refresh_client_ticket 的响应里出现，
-    环境变量里那份永远是首次抓包的旧值，不落盘就会每次运行都回退。
-    """
-    try:
-        if COOKIE_FILE.exists():
-            data = json.loads(COOKIE_FILE.read_text(encoding="utf-8"))
-            if isinstance(data, dict):
-                return {str(k): str(v) for k, v in data.items() if v}
-    except (OSError, ValueError) as e:
-        log_warning(f"读取 {COOKIE_FILE.name} 失败: {type(e).__name__}")
-    return {}
-
-
-def save_cookie(cookie_dict: dict) -> None:
-    """把刷新后的完整 cookie 落盘，供下次运行直接复用"""
-    try:
-        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-        COOKIE_FILE.write_text(
-            json.dumps(cookie_dict, ensure_ascii=False, indent=2), encoding="utf-8")
-    except OSError as e:
-        log_warning(f"保存 {COOKIE_FILE.name} 失败: {type(e).__name__}")
-
-
-def save_at(at: str):
-    """保存 access_token 到本地文件，供下次运行使用"""
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    AT_FILE.write_text(at)
 
 
 def create_session(cookie) -> requests.Session:
@@ -228,7 +175,6 @@ def refresh_token(session: requests.Session) -> str:
         token = result.get("data", {}).get("access_token", "")
         if token:
             session.cookies.set("access_token", token, domain="app.mval.qq.com")
-            save_at(token)  # 持久化保存新 token
             log_success("access_token 刷新成功")
             return token
     log_warning(f"刷新 token 失败: {result.get('msg', result.get('err_msg', '未知'))}")
@@ -528,18 +474,14 @@ def main():
         notify_send("掌瓦每日商店 错误", "❌ 未配置 VALORANT_COOKIE")
         return
 
-    env_dict = parse_cookie(VALORANT_COOKIE)
-    # 落盘的 cookie 里才有上次刷新得到的 tid，必须优先于环境变量
-    saved = load_saved_cookie()
-    cookie_dict = {**env_dict, **saved} if saved else dict(env_dict)
-    if saved:
-        log_info(f"已载入上次落盘的 Cookie（{len(saved)} 个字段）")
-
-    ct = cookie_dict.get("ct", "") or load_ct(env_dict)
+    # 唯一数据来源：环境变量 VALORANT_COOKIE（由 valorant_cookie.sh 续期后写入）
+    cookie_dict = parse_cookie(VALORANT_COOKIE)
+    ct = cookie_dict.get("ct", "").strip()
     if not ct:
-        log_error("未配置 ct (client ticket)，请在 VALORANT_COOKIE 中添加 ct=xxx，或放到文件 " + str(CT_FILE))
-        notify_send("掌瓦每日商店 错误", "❌ 缺少 ct 参数，请在 VALORANT_COOKIE 中添加 ct=xxx")
+        log_error("VALORANT_COOKIE 里没有 ct 字段，请重新抓包或跑一次 valorant_cookie.sh")
+        notify_send("掌瓦每日商店 错误", "❌ VALORANT_COOKIE 缺少 ct 字段")
         return
+    log_info("凭据来源: 环境变量 VALORANT_COOKIE（不读本地文件）")
 
     session = create_session(cookie_dict)
 
@@ -548,8 +490,7 @@ def main():
     new_ct, ct_ok, ct_reason = refresh_web_ticket(session, ct)
     if new_ct and new_ct != ct:
         ct = new_ct
-        save_ct(ct)
-        log_success("ct 已刷新并保存")
+        log_success("ct 已刷新（仅本次运行有效，不回写环境变量）")
     elif not ct_ok:
         log_warning("ct 刷新失败，可能需要重新抓包")
 
@@ -567,13 +508,6 @@ def main():
             + "｜access_token 仍可刷新，商店暂时还能用；"
             + "但旧 ct 一旦彻底失效就只能重抓。",
         )
-
-    # 落盘完整 cookie（含新 tid + 新 ct + 新 AT），下次直接复用
-    refreshed = {c.name: c.value for c in session.cookies}
-    refreshed["ct"] = ct
-    for k, v in cookie_dict.items():
-        refreshed.setdefault(k, v)
-    save_cookie(refreshed)
 
     # 获取绑定账号
     bind_result = api_post(session, "/go/auth/bind_relation_list")
