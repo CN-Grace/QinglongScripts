@@ -68,16 +68,30 @@ def save_ct(ct: str):
     CT_FILE.write_text(ct)
 
 
-def load_at(cookie_dict: dict) -> str:
-    """加载 access_token: 优先环境变量，其次本地文件"""
-    at = cookie_dict.get("access_token", "")
-    if at:
-        return at
-    if AT_FILE.exists():
-        at = AT_FILE.read_text().strip()
-        if at:
-            return at
-    return ""
+def load_saved_cookie() -> dict:
+    """读取上次刷新后落盘的完整 cookie（含 tid / 新 ct）
+
+    ⚠️ 这是续期能不能滚起来的关键：tid 只在 refresh_client_ticket 的响应里出现，
+    环境变量里那份永远是首次抓包的旧值，不落盘就会每次运行都回退。
+    """
+    try:
+        if COOKIE_FILE.exists():
+            data = json.loads(COOKIE_FILE.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                return {str(k): str(v) for k, v in data.items() if v}
+    except (OSError, ValueError) as e:
+        log_warning(f"读取 {COOKIE_FILE.name} 失败: {type(e).__name__}")
+    return {}
+
+
+def save_cookie(cookie_dict: dict) -> None:
+    """把刷新后的完整 cookie 落盘，供下次运行直接复用"""
+    try:
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        COOKIE_FILE.write_text(
+            json.dumps(cookie_dict, ensure_ascii=False, indent=2), encoding="utf-8")
+    except OSError as e:
+        log_warning(f"保存 {COOKIE_FILE.name} 失败: {type(e).__name__}")
 
 
 def save_at(at: str):
@@ -86,21 +100,21 @@ def save_at(at: str):
     AT_FILE.write_text(at)
 
 
-def create_session(cookie: str) -> requests.Session:
-    """创建带 Cookie 的 Session，优先使用持久化的 access_token"""
+def create_session(cookie) -> requests.Session:
+    """创建带 Cookie 的 Session
+
+    cookie 可以是字符串，也可以是已合并好的 cookie 字典（推荐后者，
+    这样能把上次刷新得到的 tid / access_token 一并带进去）。
+    """
     session = requests.Session()
     session.headers.update({
         "User-Agent": "mval/2.6.0.10062 Channel/5 Mozilla/5.0 (Linux; Android 16; wv) AppleWebKit/537.36",
         "Accept-Encoding": "gzip",
         "Content-Type": "application/json; charset=utf-8",
     })
-    cookie_dict = parse_cookie(cookie)
+    cookie_dict = parse_cookie(cookie) if isinstance(cookie, str) else dict(cookie)
     # ct 不是标准 cookie，不加入 session cookies
     cookie_dict.pop("ct", None)
-    # 优先使用持久化的 access_token（更可能是最新的）
-    saved_at = load_at(cookie_dict)
-    if saved_at:
-        cookie_dict["access_token"] = saved_at
     requests.utils.add_dict_to_cookiejar(session.cookies, cookie_dict)
     return session
 
@@ -497,28 +511,44 @@ def main():
         notify_send("掌瓦每日商店 错误", "❌ 未配置 VALORANT_COOKIE")
         return
 
-    cookie_dict = parse_cookie(VALORANT_COOKIE)
-    ct = load_ct(cookie_dict)
+    env_dict = parse_cookie(VALORANT_COOKIE)
+    # 落盘的 cookie 里才有上次刷新得到的 tid，必须优先于环境变量
+    saved = load_saved_cookie()
+    cookie_dict = {**env_dict, **saved} if saved else dict(env_dict)
+    if saved:
+        log_info(f"已载入上次落盘的 Cookie（{len(saved)} 个字段）")
+
+    ct = cookie_dict.get("ct", "") or load_ct(env_dict)
     if not ct:
         log_error("未配置 ct (client ticket)，请在 VALORANT_COOKIE 中添加 ct=xxx，或放到文件 " + str(CT_FILE))
         notify_send("掌瓦每日商店 错误", "❌ 缺少 ct 参数，请在 VALORANT_COOKIE 中添加 ct=xxx")
         return
 
-    session = create_session(VALORANT_COOKIE)
+    session = create_session(cookie_dict)
 
-    # 刷新认证: 先刷新 access_token，再用新 AT 刷新 ct
-    # 这样即使 AT 快过期，也能先续上，再用新 AT 刷新 ct
+    # 刷新顺序不能反：必须先 refresh_client_ticket 换出 wt(=tid)，
+    # 再刷 access_token —— AT 接口要校验 clientType + tid，缺 tid 必失败
+    new_ct, ct_ok = refresh_web_ticket(session, ct)
+    if new_ct and new_ct != ct:
+        ct = new_ct
+        save_ct(ct)
+        log_success("ct 已刷新并保存")
+    elif not ct_ok:
+        log_warning("ct 刷新失败，可能需要重新抓包")
+
     new_at = refresh_token(session)
     if not new_at:
         log_warning("access_token 刷新失败，尝试用旧 token 继续...")
 
-    new_ct, ct_ok = refresh_web_ticket(session, ct)
-    if new_ct and new_ct != ct:
-        save_ct(new_ct)
-        log_success(f"ct 已更新并保存")
-    elif not ct_ok:
-        log_warning("ct 刷新失败，可能需要重新抓包")
+    if not ct_ok:
         notify_send("掌瓦商店 Token 告警", "⚠️ access_token 或 ct 刷新失败，请尽快重新抓包，否则下次将无法获取商店")
+
+    # 落盘完整 cookie（含新 tid + 新 ct + 新 AT），下次直接复用
+    refreshed = {c.name: c.value for c in session.cookies}
+    refreshed["ct"] = ct
+    for k, v in cookie_dict.items():
+        refreshed.setdefault(k, v)
+    save_cookie(refreshed)
 
     # 获取绑定账号
     bind_result = api_post(session, "/go/auth/bind_relation_list")
