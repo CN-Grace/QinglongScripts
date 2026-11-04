@@ -37,6 +37,8 @@ COMMON_PARAMS = "source_game_zone=agame&game_zone=agame"
 CONFIG_DIR = Path(__file__).parent / "config"
 CT_FILE = CONFIG_DIR / ".valorant_ct"
 AT_FILE = CONFIG_DIR / ".valorant_at"  # 持久化 access_token
+# 持久化刷新后的完整 cookie（含 tid）——续期链能滚起来的关键
+COOKIE_FILE = CONFIG_DIR / ".valorant_cookie"
 
 
 def parse_cookie(cookie: str) -> dict:
