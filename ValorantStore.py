@@ -169,6 +169,15 @@ def refresh_web_ticket(session: requests.Session, ct: str) -> tuple:
     ct_info = rct_data.get("ct_info", rct_data)
     new_ct = ct_info.get("ct", "")
     wt = ct_info.get("wt", "")
+    if not new_ct:
+        # 只打「形状」不打具体值：用于区分「接口改版」和「ct 本身已失效」
+        def _shape(v):
+            return sorted(v.keys()) if isinstance(v, dict) else type(v).__name__
+        log_warning(
+            "refresh_client_ticket 未返回 ct｜result=%s msg=%s data_keys=%s ctinfo_keys=%s"
+            % (rct_result.get("result"),
+               rct_result.get("msg") or rct_result.get("err_msg") or "-",
+               _shape(rct_data), _shape(ct_info)))
 
     if new_ct:
         log_success(f"client ticket (ct) 刷新成功")
