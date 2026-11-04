@@ -39,7 +39,6 @@
 | 图标 | 脚本 | 功能 | 定时规则 | 说明 |
 |:---:|:---:|:---:|:---:|:---|
 | <img src="docs/src/scripts/airport.png" width="24"> | Airport.py | 机场签到 | `0 0 * * *` | 每天午夜执行 |
-| <img src="docs/src/scripts/aliyun.png" width="24"> | Aliyun.py | 阿里云盘签到 | `0 0 * * *` | 每天午夜执行 |
 | <img src="docs/src/scripts/skyland.png" width="24"> | ArknightsBanner.py | 明日方舟寻访公告 | `0 10 * * *` | 每天10:00执行，监控官网卡池公告并提取每期抽卡数据 |
 | <img src="docs/src/scripts/bilibili.png" width="24"> | Bilibili.py | B站每日任务 | `0 0 * * *` | 每天午夜执行（漫画签到/投币/观看/分享） |
 | <img src="docs/src/scripts/glados.png" width="24"> | Glados.py | GLaDOS / Railgun 签到 | `0 0 * * *` | 每天午夜执行（自动探测归属域名，Cookie 全失效时邮箱验证码保底登录） |
@@ -68,7 +67,6 @@
 各脚本调用的全部 API 接口详见 [`api/`](api/) 目录：
 
 - [Airport.md](api/Airport.md) - 机场签到 API
-- [Aliyun.md](api/Aliyun.md) - 阿里云盘签到 API
 - [ArknightsBanner.md](api/ArknightsBanner.md) - 明日方舟寻访公告 API
 - [Bilibili.md](api/Bilibili.md) - Bilibili 每日任务 API
 - [Glados.md](api/Glados.md) - GLaDOS / Railgun 签到 API
@@ -132,7 +130,6 @@
 QinglongScripts/
 ├── api/                    # API 文档目录
 │   ├── Airport.md
-│   ├── Aliyun.md
 │   ├── ArknightsBanner.md
 │   ├── Bilibili.md
 │   ├── Glados.md
@@ -154,7 +151,6 @@ QinglongScripts/
 ├── env.json                # 环境变量模板（青龙面板可直接导入）
 ├── .gitignore
 ├── Airport.py              # 机场签到
-├── Aliyun.py               # 阿里云盘签到
 ├── ArknightsBanner.py      # 明日方舟寻访公告监控
 ├── Bilibili.py             # B站每日任务
 ├── Glados.py               # GLaDOS / Railgun 签到
